@@ -10,6 +10,7 @@ class User(AbstractUser):
         _('phone number'),
         max_length=20,
         blank=True,
+        unique=True,
         validators=[
             RegexValidator(
                 regex=r'^\+?1?\d{9,15}$',

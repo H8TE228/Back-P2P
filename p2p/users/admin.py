@@ -27,7 +27,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('email', 'username', 'password1', 'password2', 'is_staff'),
+            'fields': ('email', 'username', 'phone_number', 'password1', 'password2', 'is_staff'),
         }),
     )
     list_filter = ['country', 'region', 'city', 'district', 'created_at', 'updated_at']
