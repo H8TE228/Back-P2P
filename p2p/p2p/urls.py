@@ -13,7 +13,7 @@ urlpatterns = [
 
     path('api/v1/auth/', include('users.urls')),
 
-    path('api/listings/', include('listings.urls')),
+    path('api/v1/listings/', include('listings.urls')),
 ]
 
 if settings.DEBUG:

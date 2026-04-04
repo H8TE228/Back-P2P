@@ -39,15 +39,14 @@ class ListingSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['owner', 'created_at', 'updated_at', 'category_name', 'owner_name']
 
-    def create(self, validated_data):
-        new_images_data = validated_data.pop('new_images', [])
-        listing = Listing.objects.create(**validated_data)
+    # def create(self, validated_data):
+    #     new_images_data = validated_data.pop('new_images', [])
+    #     listing = Listing.objects.create(**validated_data)
         
-        # Сохраняем загруженные изображения
-        for image_data in new_images:
-            ListingImage.objects.create(listing=listing, image=image_data)
+    #     for image_data in new_images:
+    #         ListingImage.objects.create(listing=listing, image=image_data)
         
-        return listing
+    #     return listing
 
     def update(self, instance, validated_data):
         new_images_data = validated_data.pop('new_images', [])
