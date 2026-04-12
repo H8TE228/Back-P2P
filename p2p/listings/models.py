@@ -35,6 +35,7 @@ class Listing(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    avaliability_calendar = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ['-created_at']
