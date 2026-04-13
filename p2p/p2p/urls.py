@@ -14,6 +14,7 @@ urlpatterns = [
     path('api/v1/auth/', include('users.urls')),
 
     path('api/v1/listings/', include('listings.urls')),
+    path('api/v1/listings/<int:item_id>/', include('transactions.urls')),
 ]
 
 if settings.DEBUG:

@@ -53,6 +53,7 @@ INSTALLED_APPS = [
 
     'users.apps.UsersConfig',
     'listings.apps.ListingsConfig',
+    'transactions.apps.TransactionsConfig',
 ]
 
 MIDDLEWARE = [
