@@ -68,6 +68,7 @@ class Item(models.Model):
     characteristics = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    avaliability_calendar = models.JSONField(default=list, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -126,44 +127,21 @@ class ViewHistory(models.Model):
         ordering = ['-created_at']
 
 
-class Transaction(models.Model):
-    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owner_transactions')
-    renter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='renter_transactions')
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='transactions')
+# class Review(models.Model):
+#     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
+#     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='reviews')
+#     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='reviews')
     
-    inspection_checklist = models.JSONField(default=dict, blank=True)
-    is_active = models.BooleanField(default=False)
-    availability_calendar = models.JSONField(default=dict, blank=True)
-    
-    rented_at = models.DateTimeField(null=True, blank=True)
-    returned_at = models.DateTimeField(null=True, blank=True)
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
+#     rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+#     comment = models.TextField()
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
 
-    def __str__(self):
-        return f"Transaction {self.id}: {self.item.name}"
+#     def __str__(self):
+#         return f"Review by {self.author.username} for {self.item.name}"
 
-    class Meta:
-        verbose_name = "Транзакция"
-        verbose_name_plural = "Транзакции"
-        ordering = ['-created_at']
-
-
-class Review(models.Model):
-    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
-    transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='reviews')
-    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='reviews')
-    
-    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
-    comment = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    def __str__(self):
-        return f"Review by {self.author.username} for {self.item.name}"
-
-    class Meta:
-        verbose_name = "Отзыв"
-        verbose_name_plural = "Отзывы"
-        ordering = ['-created_at']
-        unique_together = ['author', 'transaction']
+#     class Meta:
+#         verbose_name = "Отзыв"
+#         verbose_name_plural = "Отзывы"
+#         ordering = ['-created_at']
+#         unique_together = ['author', 'transaction']

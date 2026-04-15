@@ -1,7 +1,7 @@
 from django.contrib import admin
 from .models import (
     Category, ItemType, FavoriteCategory, Item, ItemImage,
-    SearchHistory, ViewHistory, Transaction, Review
+    SearchHistory, ViewHistory #, Review
 )
 
 @admin.register(Category)
@@ -46,15 +46,8 @@ class ViewHistoryAdmin(admin.ModelAdmin):
     list_filter = ('user', 'created_at')
     search_fields = ('user__username', 'item__name')
 
-@admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
-    list_display = ('id', 'item', 'owner', 'renter', 'is_active', 'rented_at', 'returned_at', 'created_at')
-    list_filter = ('is_active', 'rented_at', 'returned_at') 
-    search_fields = ('item__name', 'owner__username', 'renter__username')
-    raw_id_fields = ('owner', 'renter', 'item')
-
-@admin.register(Review)
-class ReviewAdmin(admin.ModelAdmin):
-    list_display = ('id', 'item', 'author', 'transaction', 'rating', 'created_at')
-    list_filter = ('rating', 'created_at')
-    search_fields = ('comment', 'author__username', 'item__name')
+# @admin.register(Review)
+# class ReviewAdmin(admin.ModelAdmin):
+#     list_display = ('id', 'item', 'author', 'transaction', 'rating', 'created_at')
+#     list_filter = ('rating', 'created_at')
+#     search_fields = ('comment', 'author__username', 'item__name')
