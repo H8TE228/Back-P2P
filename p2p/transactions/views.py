@@ -9,6 +9,7 @@ from .models import Transaction
 from .serializers import TransactionSerializer
 
 class TransactionView(APIView):
+    serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
 
     def post(self, request, item_id):
@@ -28,6 +29,7 @@ class TransactionView(APIView):
         return Response(serializer.data)
     
 class TransactionDetailView(APIView):
+    serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
 
     def get(self, request, item_id, pk):
