@@ -9,7 +9,7 @@ class Transaction(models.Model):
     # inspection_checklist = models.JSONField(default=dict, blank=True)
     rented_at = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
-    returned_at = models.DateTimeField(blank=True)
+    returned_at = models.DateTimeField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if not self.owner_id:

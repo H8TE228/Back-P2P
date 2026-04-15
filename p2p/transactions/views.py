@@ -11,7 +11,7 @@ from .serializers import TransactionSerializer
 class TransactionView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, item_id,):
+    def post(self, request, item_id):
         transaction, created = Transaction.objects.get_or_create(
             item_id = item_id,
             renter = request.user,
@@ -22,8 +22,8 @@ class TransactionView(APIView):
         transaction.save()
         return Response(status=status.HTTP_201_CREATED)
 
-    def get(self, request):
-        transactions = Transaction.objects.filter(renter=request.user)
+    def get(self, request, item_id):
+        transactions = Transaction.objects.filter(renter=request.user, item_id=item_id)
         serializer = TransactionSerializer(transactions, many=True)
         return Response(serializer.data)
     
