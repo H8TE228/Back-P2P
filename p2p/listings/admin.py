@@ -1,50 +1,53 @@
 from django.contrib import admin
-from .models import Category, Listing, ListingImage
+from .models import (
+    Category, ItemType, FavoriteCategory, Item, ItemImage,
+    SearchHistory, ViewHistory #, Review
+)
 
 @admin.register(Category)
 class CategoryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'slug', 'parent']
-    list_filter = ['parent']
-    search_fields = ['name', 'slug']
-    prepopulated_fields = {'slug': ('name',)}
+    list_display = ('id', 'name', 'created_at', 'updated_at')
+    search_fields = ('name',)
 
-@admin.register(Listing)
-class ListingAdmin(admin.ModelAdmin):
-    list_display = [
-        'title',
-        'owner',
-        'category',
-        'price',
-        'status',
-        'created_at',
-        'updated_at'
-    ]
-    list_filter = ['status', 'category', 'created_at', 'updated_at']
-    search_fields = ['title', 'description', 'owner__email', 'owner__username']
-    readonly_fields = ['owner', 'created_at', 'updated_at']
-    date_hierarchy = 'created_at'
+@admin.register(ItemType)
+class ItemTypeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'category', 'created_at')
+    list_filter = ('category',)
+    search_fields = ('name',)
 
-    fieldsets = (
-        ('Основная информация', {
-            'fields': ('title', 'description', 'owner', 'category', 'status')
-        }),
-        ('Цена', {
-            'fields': ('price',)
-        }),
-        ('Даты', {
-            'fields': ('created_at', 'updated_at'),
-            'classes': ('collapse',)
-        }),
-    )
+@admin.register(FavoriteCategory)
+class FavoriteCategoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'category', 'created_at')
+    list_filter = ('user', 'category')
+    search_fields = ('user__username', 'category__name')
 
-    def save_model(self, request, obj, form, change):
-        # Если это создание нового объекта и владелец не указан
-        if not change and not obj.owner:
-            obj.owner = request.user
-        super().save_model(request, obj, form, change)
+@admin.register(Item)
+class ItemAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'type', 'owner', 'price', 'status', 'created_at')
+    list_filter = ('status', 'type__category', 'owner')
+    search_fields = ('name', 'description', 'owner__username')
+    raw_id_fields = ('owner', 'type')
 
-@admin.register(ListingImage)
-class ListingImageAdmin(admin.ModelAdmin):
-    list_display = ['listing', 'image', 'is_primary', 'uploaded_at']
-    list_filter = ['is_primary', 'uploaded_at']
-    readonly_fields = ['uploaded_at']
+@admin.register(ItemImage)
+class ItemImageAdmin(admin.ModelAdmin):
+    list_display = ('id', 'item', 'is_main', 'alt_text')
+    list_filter = ('is_main', 'item__type__category')
+    search_fields = ('item__name', 'alt_text')
+
+@admin.register(SearchHistory)
+class SearchHistoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'query_text', 'created_at')
+    list_filter = ('user', 'created_at')
+    search_fields = ('query_text', 'user__username')
+
+@admin.register(ViewHistory)
+class ViewHistoryAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'item', 'created_at')
+    list_filter = ('user', 'created_at')
+    search_fields = ('user__username', 'item__name')
+
+# @admin.register(Review)
+# class ReviewAdmin(admin.ModelAdmin):
+#     list_display = ('id', 'item', 'author', 'transaction', 'rating', 'created_at')
+#     list_filter = ('rating', 'created_at')
+#     search_fields = ('comment', 'author__username', 'item__name')
