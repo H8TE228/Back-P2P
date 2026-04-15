@@ -29,7 +29,6 @@ class ItemType(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    avaliability_calendar = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return f"{self.category.name} - {self.name}"
