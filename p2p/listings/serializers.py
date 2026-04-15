@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, ItemType, Item, ItemImage, Transaction, Review, SearchHistory, ViewHistory, FavoriteCategory
+from .models import Category, ItemType, Item, ItemImage, SearchHistory, ViewHistory, FavoriteCategory # Review,
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -63,32 +63,17 @@ class ItemSerializer(serializers.ModelSerializer):
         
         return instance
 
-class TransactionSerializer(serializers.ModelSerializer):
-    owner_name = serializers.CharField(source='owner.username', read_only=True)
-    renter_name = serializers.CharField(source='renter.username', read_only=True)
-    item_name = serializers.CharField(source='item.name', read_only=True)
+# class ReviewSerializer(serializers.ModelSerializer):
+#     author_name = serializers.CharField(source='author.username', read_only=True)
+#     item_name = serializers.CharField(source='item.name', read_only=True)
 
-    class Meta:
-        model = Transaction
-        fields = [
-            'id', 'owner', 'owner_name', 'renter', 'renter_name', 
-            'item', 'item_name', 'inspection_checklist', 'is_active', 
-            'availability_calendar', 'rented_at', 'returned_at',
-            'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
-
-class ReviewSerializer(serializers.ModelSerializer):
-    author_name = serializers.CharField(source='author.username', read_only=True)
-    item_name = serializers.CharField(source='item.name', read_only=True)
-
-    class Meta:
-        model = Review
-        fields = [
-            'id', 'author', 'author_name', 'transaction', 'item', 'item_name',
-            'rating', 'comment', 'created_at', 'updated_at'
-        ]
-        read_only_fields = ['id', 'author', 'created_at', 'updated_at']
+#     class Meta:
+#         model = Review
+#         fields = [
+#             'id', 'author', 'author_name', 'transaction', 'item', 'item_name',
+#             'rating', 'comment', 'created_at', 'updated_at'
+#         ]
+#         read_only_fields = ['id', 'author', 'created_at', 'updated_at']
 
 class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:

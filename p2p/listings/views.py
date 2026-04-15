@@ -5,12 +5,13 @@ from django.db.models import Q
 
 from .models import (
     Category, ItemType, Item, ItemImage, 
-    Transaction, Review, SearchHistory, ViewHistory, FavoriteCategory
+    SearchHistory, ViewHistory, FavoriteCategory,
+    # Review, 
 )
 from .serializers import (
     CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer,
-    TransactionSerializer, ReviewSerializer, SearchHistorySerializer, 
-    ViewHistorySerializer, FavoriteCategorySerializer
+    SearchHistorySerializer, ViewHistorySerializer, FavoriteCategorySerializer,
+    # ReviewSerializer, 
 )
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -92,37 +93,20 @@ class ItemImageViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
 
-class TransactionViewSet(viewsets.ModelViewSet):
-    queryset = Transaction.objects.all()
-    serializer_class = TransactionSerializer
-    permission_classes = [permissions.IsAuthenticated]
+# class ReviewViewSet(viewsets.ModelViewSet):
+#     queryset = Review.objects.all()
+#     serializer_class = ReviewSerializer
+#     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-    def get_queryset(self):
-        user = self.request.user
-        return Transaction.objects.filter(Q(owner=user) | Q(renter=user))
+#     def get_queryset(self):
+#         queryset = Review.objects.all()
+#         item_id = self.request.query_params.get('item_id', None)
+#         if item_id:
+#             queryset = queryset.filter(item_id=item_id)
+#         return queryset
 
-    def perform_create(self, serializer):
-        item = serializer.validated_data.get('item')
-        if item:
-            serializer.save(owner=item.owner, renter=self.request.user)
-        else:
-            serializer.save(renter=self.request.user)
-
-
-class ReviewViewSet(viewsets.ModelViewSet):
-    queryset = Review.objects.all()
-    serializer_class = ReviewSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
-
-    def get_queryset(self):
-        queryset = Review.objects.all()
-        item_id = self.request.query_params.get('item_id', None)
-        if item_id:
-            queryset = queryset.filter(item_id=item_id)
-        return queryset
-
-    def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
+#     def perform_create(self, serializer):
+#         serializer.save(author=self.request.user)
 
 
 class SearchHistoryViewSet(viewsets.ModelViewSet):
