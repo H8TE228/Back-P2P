@@ -6,6 +6,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = [
             'id', 'owner', 'renter', 'item', 'rented_at',
-            'is_active', 'returned_at',
+            'status', 'returned_at',
         ]
-        read_only_fields = ['id', 'renter', 'owner', 'rented_at', 'is_acitve', 'returned_at']
+        read_only_fields = [
+            'id', 'owner', 'renter', 'rented_at',
+            'status', 'returned_at',
+        ]
