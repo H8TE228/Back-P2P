@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.utils import timezone
 
 from django_filters.rest_framework import DjangoFilterBackend
 
@@ -7,8 +8,6 @@ from rest_framework import generics, status
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-
-from datetime import datetime
 
 from .models import Transaction
 from .serializers import TransactionSerializer
@@ -95,7 +94,7 @@ class TransactionApprovalView(APIView):
                 transaction.status = Transaction.Status.ACTIVE
             case Transaction.Status.RETURNING:
                 transaction.status = Transaction.Status.COMPLETED
-                transaction.returned_at = datetime.now()
+                transaction.returned_at = timezone.now()
 
         transaction.save()
         return Response({

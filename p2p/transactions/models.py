@@ -1,6 +1,8 @@
 from django.db import models
+from django.utils import timezone
 from users.models import User
 from listings.models import Item
+
 
 class Transaction(models.Model):
     class Status(models.TextChoices):
@@ -22,4 +24,7 @@ class Transaction(models.Model):
     def save(self, *args, **kwargs):
         if not self.owner_id:
             self.owner = self.item.owner
+
+        if self.status == self.Status.COMPLETED and not self.returned_at:
+            self.returned_at = timezone.now()
         super().save(*args, **kwargs)
