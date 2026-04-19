@@ -83,6 +83,7 @@ class PendingTransactionsView(generics.ListAPIView):
 # подтвердить транзакцию (одобрить, подтвердить получение/возврат предмета)
 class TransactionApprovalView(APIView):
     permission_classes = [IsAuthenticated, CanApproveTransaction,]
+    
     def post(self, request, pk):
         transaction = get_object_or_404(Transaction, pk=pk)
         self.check_object_permissions(request, transaction)
@@ -101,6 +102,24 @@ class TransactionApprovalView(APIView):
             "id": transaction.id,
             "new_status": transaction.status
         }, status=status.HTTP_200_OK)
+    
+
+# reject
+class TransactionRejectionView(APIView):
+    permission_classes = [IsAuthenticated, CanApproveTransaction]
+    
+    def post(self, request, pk):
+        transaction = get_object_or_404(Transaction, pk=pk)
+        self.check_object_permissions(request, transaction)
+        if transaction.status != Transaction.Status.PENDING:
+            return Response(
+                {"error": "Можно отклонить только навый запрос"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        transaction.status = Transaction.Status.REJECTED
+        transaction.save()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+        
 
 
 # послать запрос на возвращение предмета

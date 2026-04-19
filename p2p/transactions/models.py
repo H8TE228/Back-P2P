@@ -6,6 +6,7 @@ class Transaction(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "pending" # запрос на совладение/аренду
         APPROVED = "approved", "approved" # запрос подтвердили
+        REJECTED = "rejected", "rejected" # запрос отклонили
         ACTIVE = "active", "active" # сделка активна
         RETURNING = "returning", "returning" # в процессе возврата
         COMPLETED = "completed", "completed" # сделка завершена

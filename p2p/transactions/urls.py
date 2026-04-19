@@ -7,5 +7,6 @@ urlpatterns = [
     path('transactions/', views.UserTransactionView.as_view(), name='transaction_list'),
     path('transactions/pending/', views.PendingTransactionsView.as_view(), name='pending_transaction_list'),
     path('transactions/<int:pk>/approve/', views.TransactionApprovalView.as_view(), name='approve_transaction'),
+    path('transactions/<int:pk>/reject/', views.TransactionRejectionView.as_view(), name='reject_transaction'),
     path('transactions/<int:pk>/return/', views.ReturnItemView.as_view(), name='return_item'),
 ]
