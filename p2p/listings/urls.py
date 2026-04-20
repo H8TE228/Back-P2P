@@ -4,7 +4,7 @@ from .views import (
     CategoryViewSet,
     ItemTypeViewSet,
     ItemViewSet,
-    # ReviewViewSet,
+    ReviewViewSet,
     SearchHistoryViewSet,
     ViewHistoryViewSet,
 )
@@ -19,17 +19,17 @@ router.register(r'item', ItemViewSet, basename='item')
 urlpatterns = [
     path('', include(router.urls)),
     
-    # path('reviews/<int:item_id>/', ReviewViewSet.as_view({
-    #     'get': 'list',
-    #     'post': 'create'
-    # }), name='review-list-by-item'),
-    
-    # path('reviews/<int:item_id>/<int:pk>/', ReviewViewSet.as_view({
-    #     'get': 'retrieve',
-    #     'put': 'update',
-    #     'patch': 'partial_update',
-    #     'delete': 'destroy'
-    # }), name='review-detail-by-item'),
+    path('reviews/<int:item_id>/', ReviewViewSet.as_view({
+        'get': 'list',
+        'post': 'create'
+    }), name='review-list-by-item'),
+
+    path('reviews/<int:item_id>/<int:pk>/', ReviewViewSet.as_view({
+        'get': 'retrieve',
+        'put': 'update',
+        'patch': 'partial_update',
+        'delete': 'destroy'
+    }), name='review-detail-by-item'),
 
     path('search-history/<int:user_id>/', SearchHistoryViewSet.as_view({
         'get': 'list',

@@ -1,17 +1,20 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import Q, Avg
+from django_filters.rest_framework import DjangoFilterBackend
+from .filters import ItemFilter
+
 
 from .models import (
     Category, ItemType, Item, ItemImage, 
     SearchHistory, ViewHistory, FavoriteCategory,
-    # Review, 
+    Review, 
 )
 from .serializers import (
     CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer,
     SearchHistorySerializer, ViewHistorySerializer, FavoriteCategorySerializer,
-    # ReviewSerializer, 
+    ReviewSerializer, 
 )
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -47,6 +50,8 @@ class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
     serializer_class = ItemSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ItemFilter
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -92,22 +97,36 @@ class ItemImageViewSet(viewsets.ModelViewSet):
     serializer_class = ItemImageSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+class ReviewViewSet(viewsets.ModelViewSet):
+    queryset = Review.objects.all()
+    serializer_class = ReviewSerializer
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
-# class ReviewViewSet(viewsets.ModelViewSet):
-#     queryset = Review.objects.all()
-#     serializer_class = ReviewSerializer
-#     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    def get_queryset(self):
+        queryset = Review.objects.all()
+        item_id = self.request.query_params.get('item_id', None)
+        recipient_id = self.request.query_params.get('recipient_id', None)
 
-#     def get_queryset(self):
-#         queryset = Review.objects.all()
-#         item_id = self.request.query_params.get('item_id', None)
-#         if item_id:
-#             queryset = queryset.filter(item_id=item_id)
-#         return queryset
+        if item_id:
+            queryset = queryset.filter(item_id=item_id)
+        if recipient_id:
+            queryset = queryset.filter(recipient_id=recipient_id)
+        return queryset
 
-#     def perform_create(self, serializer):
-#         serializer.save(author=self.request.user)
+    def perform_create(self, serializer):
+        serializer.save(author=self.request.user)
 
+    @action(detail=False, methods=['get'])
+    def my_reviews(self, request):
+        reviews = Review.objects.filter(author=request.user)
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def received_reviews(self, request):
+        reviews = Review.objects.filter(recipient=request.user)
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
 
 class SearchHistoryViewSet(viewsets.ModelViewSet):
     queryset = SearchHistory.objects.all()

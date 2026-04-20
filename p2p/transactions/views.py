@@ -24,7 +24,7 @@ class ItemTransactionView(APIView):
         transaction, created = Transaction.objects.get_or_create(
             item_id = item_id,
             renter = request.user,
-            is_active = True,
+            defaults={'status': 'pending'},
         )
         if not created:
             return Response({"detail": "Данный предмет в настойщий момент уже находится в со-владении у этого пользователя"}, status=status.HTTP_400_BAD_REQUEST)
