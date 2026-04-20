@@ -130,7 +130,7 @@ class ViewHistory(models.Model):
 class Review(models.Model):
     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='given_reviews')
     recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_reviews')
-    transaction = models.OneToOneField('transactions.Transaction', on_delete=models.CASCADE, related_name='review')
+    transaction = models.ForeignKey('transactions.Transaction', on_delete=models.CASCADE, related_name='reviews')
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='reviews')
 
     rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])

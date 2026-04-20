@@ -106,6 +106,7 @@ class ReviewViewSet(viewsets.ModelViewSet):
         queryset = Review.objects.all()
         item_id = self.request.query_params.get('item_id', None)
         recipient_id = self.request.query_params.get('recipient_id', None)
+        transaction_id = self.request.query_params.get('transaction_id', None)
 
         if item_id:
             queryset = queryset.filter(item_id=item_id)
@@ -127,6 +128,16 @@ class ReviewViewSet(viewsets.ModelViewSet):
         reviews = Review.objects.filter(recipient=request.user)
         serializer = self.get_serializer(reviews, many=True)
         return Response(serializer.data)
+    
+    @action(detail=False, methods=['get'])
+    def transaction_reviews(self, request, transaction_id=None):
+        """Получить все отзывы для конкретной транзакции (от арендатора и арендодателя)"""
+        transaction_id = self.request.query_params.get('transaction_id')
+        if not transaction_id:
+            return Response({'error': 'transaction_id required'}, status=status.HTTP_400_BAD_REQUEST)
+        reviews = Review.objects.filter(transaction_id=transaction_id)
+        serializer = self.get_serializer(reviews, many=True)
+        return Response(serializer.data)
 
 class SearchHistoryViewSet(viewsets.ModelViewSet):
     queryset = SearchHistory.objects.all()
@@ -135,17 +146,24 @@ class SearchHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user.is_superuser:
-            return SearchHistory.objects.filter(user=user)
-        
-        user_id = self.kwargs.get('user_id') # Если маршрут настроен так
-        if user_id:
-            return SearchHistory.objects.filter(user_id=user_id)
-        return SearchHistory.objects.all()
+        # Суперпользователь видит все, обычные - только свои
+        if user.is_superuser:
+            user_id = self.kwargs.get('user_id')
+            if user_id:
+                return SearchHistory.objects.filter(user_id=user_id)
+            return SearchHistory.objects.all()
+        return SearchHistory.objects.filter(user=user)
+
+    def perform_create(self, serializer):
+        # Автоматически привязываем поиск к текущему пользователю
+        serializer.save(user=self.request.user)
 
     @action(detail=False, methods=['post'])
-    def add(self, request):
-        serializer = self.get_serializer(data=request.data)
+    def log_search(self, request):
+        """Логгирование поискового запроса"""
+        data = request.data.copy()
+        data['user'] = request.user.id
+        serializer = self.get_serializer(data=data)
         if serializer.is_valid():
             serializer.save(user=request.user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -159,12 +177,28 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if not user.is_superuser:
-            return ViewHistory.objects.filter(user=user)
-        return ViewHistory.objects.all()
+        # Суперпользователь видит все, обычные - только свои
+        if user.is_superuser:
+            user_id = self.kwargs.get('user_id')
+            if user_id:
+                return ViewHistory.objects.filter(user_id=user_id)
+            return ViewHistory.objects.all()
+        return ViewHistory.objects.filter(user=user)
 
     def perform_create(self, serializer):
+        # Автоматически привязываем просмотр к текущему пользователю
         serializer.save(user=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def log_view(self, request):
+        """Логгирование просмотра предмета"""
+        data = request.data.copy()
+        data['user'] = request.user.id
+        serializer = self.get_serializer(data=data)
+        if serializer.is_valid():
+            serializer.save(user=request.user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class FavoriteCategoryViewSet(viewsets.ModelViewSet):

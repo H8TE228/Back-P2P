@@ -101,11 +101,20 @@ class ReviewSerializer(serializers.ModelSerializer):
             'transaction', 'item', 'item_name',
             'rating', 'comment', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'author', 'item', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'author', 'item', 'recipient', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         transaction = validated_data['transaction']
-        validated_data['recipient'] = transaction.owner
+        author = self.context['request'].user
+
+        if author == transaction.renter:
+            validated_data['recipient'] = transaction.owner
+        elif author == transaction.owner:
+            validated_data['recipient'] = transaction.renter
+        else:
+            raise serializers.ValidationError("Только участники транзакции могут оставить отзыв")
+
+        validated_data['author'] = author
         validated_data['author'] = self.context['request'].user
         validated_data['item'] = transaction.item
         return super().create(validated_data)
@@ -113,11 +122,13 @@ class ReviewSerializer(serializers.ModelSerializer):
     def validate_transaction(self, value):
         if value.status != 'completed':
             raise serializers.ValidationError("Отзыв можно оставить только после завершения транзакции")
-        if value.renter != self.context['request'].user:
-            raise serializers.ValidationError("Только арендатор может оставить отзыв")
-        if hasattr(value, 'review'):
-            raise serializers.ValidationError("Отзыв на эту транзакцию уже оставлен")
-        return value
+        author = self.context['request'].user
+        if author not in [value.owner, value.renter]:
+            raise serializers.ValidationError("Только участники транзакции могут оставить отзыв")
+
+        existing_review = Review.objects.filter(transaction=value, author=author).exists()
+        if existing_review:
+            raise serializers.ValidationError("Вы уже оставили отзыв на эту транзакцию")
 
 
 class SearchHistorySerializer(serializers.ModelSerializer):

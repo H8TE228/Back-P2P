@@ -7,6 +7,7 @@ from .views import (
     ReviewViewSet,
     SearchHistoryViewSet,
     ViewHistoryViewSet,
+    FavoriteCategoryViewSet,
 )
 
 router = DefaultRouter()
@@ -14,6 +15,9 @@ router = DefaultRouter()
 router.register(r'category', CategoryViewSet, basename='category')
 router.register(r'type', ItemTypeViewSet, basename='type')
 router.register(r'item', ItemViewSet, basename='item')
+router.register(r'search-history', SearchHistoryViewSet, basename='search-history')
+router.register(r'view-history', ViewHistoryViewSet, basename='view-history')
+router.register(r'favorite-categories', FavoriteCategoryViewSet, basename='favorite-category')
 
 
 urlpatterns = [
@@ -30,12 +34,4 @@ urlpatterns = [
         'patch': 'partial_update',
         'delete': 'destroy'
     }), name='review-detail-by-item'),
-
-    path('search-history/<int:user_id>/', SearchHistoryViewSet.as_view({
-        'get': 'list',
-    }), name='search-history-list'),
-
-    path('view-history/<int:user_id>/', ViewHistoryViewSet.as_view({
-        'get': 'list',
-    }), name='view-history-list'),
 ]
