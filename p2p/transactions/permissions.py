@@ -4,7 +4,7 @@ from .models import Transaction
 
 class CanApproveTransaction(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
-        owner_approve = [Transaction.Status.PENDING, Transaction.Status.RETURING]
+        owner_approve = [Transaction.Status.PENDING, Transaction.Status.RETURNING]
         if request.user == obj.owner and obj.status in owner_approve:
             return True
         renter_approve = Transaction.Status.APPROVED

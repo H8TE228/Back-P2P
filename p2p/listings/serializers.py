@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, ItemType, Item, ItemImage, SearchHistory, ViewHistory, FavoriteCategory # Review,
+from .models import Category, ItemType, Item, ItemImage, SearchHistory, ViewHistory, FavoriteCategory, Review
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
@@ -42,14 +42,14 @@ class ItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='type.category.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     images = ItemImageSerializer(many=True, required=False)
-    avaliability_calendar = AvaliabilityCalendarSerializer(many=True)
+    #avaliability_calendar = AvaliabilityCalendarSerializer(many=True)
 
     class Meta:
         model = Item
         fields = [
             'id', 'type', 'type_name', 'category_name', 'owner', 'owner_name',
             'name', 'description', 'characteristics', 'status', 'price',
-            'avaliability_calendar', 'images', 'created_at', 'updated_at'
+            'images', 'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
@@ -74,32 +74,51 @@ class ItemSerializer(serializers.ModelSerializer):
         
         return instance
     
-    def validate_avaliability_calendar(self, value):
-        serializer = AvaliabilityCalendarSerializer(data=value, many=True)
-        if not serializer.is_valid():
-            raise serializers.ValidationError(serializer.errors)
+    # def validate_avaliability_calendar(self, value):
+    #     serializer = AvaliabilityCalendarSerializer(data=value, many=True)
+    #     if not serializer.is_valid():
+    #         raise serializers.ValidationError(serializer.errors)
         
-        sorted_dates = sorted(value, key=lambda x: x['start'])
-        for i in range(len(sorted_dates) - 1):
-            current_slot = sorted_dates[i]
-            next_slot = sorted_dates[i+1]
-            if next_slot['start'] < current_slot['end']:
-                raise serializers.ValidationError(
-                    f'Интервалы пересекаются: end {current_slot['end']} накладывается на {next_slot['start']}'
-                )
+    #     sorted_dates = sorted(value, key=lambda x: x['start'])
+    #     for i in range(len(sorted_dates) - 1):
+    #         current_slot = sorted_dates[i]
+    #         next_slot = sorted_dates[i+1]
+    #         if next_slot['start'] < current_slot['end']:
+    #             raise serializers.ValidationError(
+    #                 f'Интервалы пересекаются: end {current_slot['end']} накладывается на {next_slot['start']}'
+    #             )
+    #     return value
+
+class ReviewSerializer(serializers.ModelSerializer):
+    author_name = serializers.CharField(source='author.username', read_only=True)
+    recipient_name = serializers.CharField(source='recipient.username', read_only=True)
+    item_name = serializers.CharField(source='item.name', read_only=True)
+
+    class Meta:
+        model = Review
+        fields = [
+            'id', 'author', 'author_name', 'recipient', 'recipient_name',
+            'transaction', 'item', 'item_name',
+            'rating', 'comment', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'author', 'item', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        transaction = validated_data['transaction']
+        validated_data['recipient'] = transaction.owner
+        validated_data['author'] = self.context['request'].user
+        validated_data['item'] = transaction.item
+        return super().create(validated_data)
+
+    def validate_transaction(self, value):
+        if value.status != 'completed':
+            raise serializers.ValidationError("Отзыв можно оставить только после завершения транзакции")
+        if value.renter != self.context['request'].user:
+            raise serializers.ValidationError("Только арендатор может оставить отзыв")
+        if hasattr(value, 'review'):
+            raise serializers.ValidationError("Отзыв на эту транзакцию уже оставлен")
         return value
 
-# class ReviewSerializer(serializers.ModelSerializer):
-#     author_name = serializers.CharField(source='author.username', read_only=True)
-#     item_name = serializers.CharField(source='item.name', read_only=True)
-
-#     class Meta:
-#         model = Review
-#         fields = [
-#             'id', 'author', 'author_name', 'transaction', 'item', 'item_name',
-#             'rating', 'comment', 'created_at', 'updated_at'
-#         ]
-#         read_only_fields = ['id', 'author', 'created_at', 'updated_at']
 
 class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:

@@ -2,6 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.password_validation import validate_password
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.db.models import Avg
 from users.models import User
 
 User = get_user_model()
@@ -25,6 +26,9 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return data
 
 class UserSerializer(serializers.ModelSerializer):
+    rating = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
+    
     class Meta:
         model = User
         fields = (
@@ -44,8 +48,19 @@ class UserSerializer(serializers.ModelSerializer):
             'apartment',
             'created_at',
             'updated_at',
+            'rating',
+            'reviews_count',
         )
-        read_only_fields = ('id', 'created_at', 'updated_at',)
+        read_only_fields = ('id', 'created_at', 'updated_at', 'rating', 'reviews_count')
+
+    def get_rating(self, obj):
+        from listings.models import Review
+        avg_rating = Review.objects.filter(recipient=obj).aggregate(avg=Avg('rating'))['avg']
+        return float(round(avg_rating, 2)) if avg_rating else None
+
+    def get_reviews_count(self, obj):
+        from listings.models import Review
+        return Review.objects.filter(recipient=obj).count()
 
     def update(self, instance, validated_data):
         if 'profile_picture' in validated_data:

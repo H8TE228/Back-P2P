@@ -127,21 +127,22 @@ class ViewHistory(models.Model):
         ordering = ['-created_at']
 
 
-# class Review(models.Model):
-#     author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='reviews')
-#     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='reviews')
-#     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='reviews')
-    
-#     rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
-#     comment = models.TextField()
-#     created_at = models.DateTimeField(auto_now_add=True)
-#     updated_at = models.DateTimeField(auto_now=True)
+class Review(models.Model):
+    author = models.ForeignKey(User, on_delete=models.CASCADE, related_name='given_reviews')
+    recipient = models.ForeignKey(User, on_delete=models.CASCADE, related_name='received_reviews')
+    transaction = models.OneToOneField('transactions.Transaction', on_delete=models.CASCADE, related_name='review')
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='reviews')
 
-#     def __str__(self):
-#         return f"Review by {self.author.username} for {self.item.name}"
+    rating = models.IntegerField(validators=[MinValueValidator(1), MaxValueValidator(5)])
+    comment = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
-#     class Meta:
-#         verbose_name = "Отзыв"
-#         verbose_name_plural = "Отзывы"
-#         ordering = ['-created_at']
-#         unique_together = ['author', 'transaction']
+    def __str__(self):
+        return f"Review by {self.author.username} for {self.recipient.username} (item: {self.item.name})"
+
+    class Meta:
+        verbose_name = "Отзыв"
+        verbose_name_plural = "Отзывы"
+        ordering = ['-created_at']
+        unique_together = ['author', 'transaction']
