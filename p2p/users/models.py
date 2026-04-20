@@ -46,3 +46,9 @@ class User(AbstractUser):
 
     def __str__(self):
         return self.email
+    
+    def get_rating(self):
+        from listings.models import Review
+        from django.db.models import Avg
+        avg_rating = Review.objects.filter(recipient=self).aggregate(avg=Avg('rating'))['avg']
+        return round(avg_rating, 2) if avg_rating else None
