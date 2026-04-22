@@ -9,6 +9,6 @@ class TransactionSerializer(serializers.ModelSerializer):
             'status', 'returned_at',
         ]
         read_only_fields = [
-            'id', 'owner', 'renter', 'rented_at',
+            'id', 'owner', 'renter', 'item', 'rented_at',
             'status', 'returned_at',
         ]
