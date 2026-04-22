@@ -9,6 +9,9 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 
+from drf_spectacular.utils import extend_schema, OpenApiResponse, OpenApiExample
+from drf_spectacular.types import OpenApiTypes
+
 from .models import Transaction
 from .serializers import TransactionSerializer
 from .permissions import CanApproveTransaction, CanReturnItem
@@ -20,6 +23,16 @@ class ItemTransactionView(APIView):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["transactions"],
+        summary="Создать транзакцию для айтема (арендовать предмет)",
+        description="""
+            Создаёт транзакцию для предмета (пользователь нажал "арендовать").
+            После создания транзакции, она получает статус 'PENDING',
+            т.е. она ещё должна получить от владельца предмета одобрение на аренду.
+            (см. transactions/pending/)
+        """
+    )
     def post(self, request, item_id):
         transaction, created = Transaction.objects.get_or_create(
             item_id = item_id,
@@ -27,10 +40,21 @@ class ItemTransactionView(APIView):
             defaults={'status': 'pending'},
         )
         if not created:
-            return Response({"detail": "Данный предмет в настойщий момент уже находится в со-владении у этого пользователя"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": "Данный предмет в настойщий момент уже находится в со-владении у этого пользователя"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         transaction.save()
         return Response(status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        tags=["transactions"],
+        summary="Список транзакций пользователя с данным предметом",
+        description="""
+            Возвращает список транзакций, в которых пользователь арендовывал данный предмет.
+            Возвращает список, так как у пользователя могло быть несколько аренд данного предмета в прошлом.
+        """
+    )
     def get(self, request, item_id):
         transactions = Transaction.objects.filter(renter=request.user, item_id=item_id)
         serializer = TransactionSerializer(transactions, many=True)
@@ -38,6 +62,15 @@ class ItemTransactionView(APIView):
 
 
 # список транзакций юзера
+@extend_schema(
+        tags=["transactions"],
+        summary="Список всех транзакций пользователя",
+        description="""
+            Возвращает список всех транзакций пользователя, в которых он участвовал либо как владелец предмета,
+            либо как пользователь, арендующий предмет.
+            Доступна фильтрация по item, owner и status.
+        """
+    )
 class UserTransactionView(generics.ListAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
@@ -53,6 +86,13 @@ class TransactionDetailView(APIView):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["transactions"],
+        summary="Получить транзакцию по id",
+        description="""
+            Возвращает транзакцию по её id.
+        """
+    )
     def get(self, request, pk):
         transaction = get_object_or_404(Transaction, id=pk)
         serializer = TransactionSerializer(transaction)
@@ -68,6 +108,24 @@ class TransactionDetailView(APIView):
 
 
 # список транзакций, на которые необходимо ответить подтверждением
+@extend_schema(
+        tags=["transactions"],
+        summary="Список транзакций, ожидающих подтверждения",
+        description="""
+            Возвращает список транзакций, которые пользователь должен подтвердить.
+            Вот какие транзакции возвращает данный эндпоинт:
+             - Транзакции со статусом 'PENDING' - это заявки от пользователей, которые хотят арендовать предмет текущего юзера.
+                Такие транзакции можно либо одобрить, и тогда статус сменится на 'APPROVED', либо можно отказать, и тогда
+                статус сменится на 'REJECTED'. (см. /transactions/approve/ и /transactions/reject/)  
+             - Транзакции со статусом 'APPROVED' - это одобренные транзакции текущего пользователя.
+                Данный статус имеют транзакции на те вещи, аренду которых уже одобрил их владелец, но сам арендатор ещё их
+                не получил. (Условно, рентер видит на сайте трактор и нажимает "арендовать", после чего создаётся транзакция
+                со статусом 'PENDING', владелец трактора одобряет аренду и статус меняется на 'APPROVED', после чего уже рентер
+                подтверждает, что он этот трактор получил, и статус вновь меняется уже на 'ACTIVE'.)
+             - Транзакции со статусом 'RETURNING' - рентер захотел вернуть предмет, и до тех пор, пока владелец
+                не подтвердит, что предмет ему вернули, транзакция имеет статус 'RETURNING' a.k.a. в процессе возвращения.
+        """
+    )
 class PendingTransactionsView(generics.ListAPIView):
     serializer_class = TransactionSerializer
     permission_classes = [IsAuthenticated]
@@ -83,6 +141,19 @@ class PendingTransactionsView(generics.ListAPIView):
 class TransactionApprovalView(APIView):
     permission_classes = [IsAuthenticated, CanApproveTransaction,]
     
+    @extend_schema(
+        tags=["transactions"],
+        summary="Подтвердить смену статуса транзакции",
+        description="""
+            Данный эндпоинт используется для подтверждения транзакции пользователем:
+             - Если пользователь это владелец и кто-то хочет арендовать его вещь, то владелец сначала должен либо
+                одобрить данную транзакцию (аренду), либо отказать. Для одобрения и используется данный эндпоинт.
+             - Если пользователь это арендатель и владелец одобрил аренду, то тут рентер подтверждает, что он получил
+                тот предмет, который арендовал.
+             - Если пользователь это владелец и ему должны вернуть предмет после аренды, то тут владелец подтверждает,
+                что он получил свой предмет обратно.
+        """
+    )
     def post(self, request, pk):
         transaction = get_object_or_404(Transaction, pk=pk)
         self.check_object_permissions(request, transaction)
@@ -107,6 +178,14 @@ class TransactionApprovalView(APIView):
 class TransactionRejectionView(APIView):
     permission_classes = [IsAuthenticated, CanApproveTransaction]
     
+    @extend_schema(
+        tags=["transactions"],
+        summary="Отказать арендателю в аренде предмета",
+        description="""
+            Владелец предмета может отказать в аренде на предмет.
+            Меняет статус транзакции на 'REJECTED'
+        """
+    )
     def post(self, request, pk):
         transaction = get_object_or_404(Transaction, pk=pk)
         self.check_object_permissions(request, transaction)
@@ -124,6 +203,15 @@ class TransactionRejectionView(APIView):
 # послать запрос на возвращение предмета
 class ReturnItemView(APIView):
     permission_classes = [IsAuthenticated, CanReturnItem]
+
+    @extend_schema(
+        tags=["transactions"],
+        summary="Вернуть предмет",
+        description="""
+            Меняет статус транзакции на 'RETURNING', когда рентер решает вренуть предмет, но сам
+            владелец ещё не подтвердил, что получил предмет обратно.
+        """
+    )
     def post(self, request, pk):
         transaction = get_object_or_404(Transaction, pk=pk)
         self.check_object_permissions(request, transaction)
