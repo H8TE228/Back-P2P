@@ -5,6 +5,8 @@ from django.db.models import Q, Avg
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ItemFilter
 
+from drf_spectacular.utils import extend_schema
+
 
 from .models import (
     Category, ItemType, Item, ItemImage, 
@@ -17,6 +19,14 @@ from .serializers import (
     ReviewSerializer, 
 )
 
+@extend_schema(
+    tags=["item categories"],
+    description="""
+        CRUD для категорий айтемов
+        Категория предмета -> тип предмета -> предмет
+        Пример: транспорт -> трактор -> item 'трактор модель XXXX (красный)' от user_id=1
+    """
+)
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
@@ -28,6 +38,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
         return [permissions.IsAuthenticated()]
 
 
+@extend_schema(
+    tags=["item types"],
+    description="""
+        CRUD для типов айтемов
+        Категория предмета -> тип предмета -> предмет
+        Пример: транспорт -> трактор -> item 'трактор модель XXXX (красный)' от user_id=1
+    """
+)
 class ItemTypeViewSet(viewsets.ModelViewSet):
     queryset = ItemType.objects.all()
     serializer_class = ItemTypeSerializer
@@ -46,6 +64,12 @@ class ItemTypeViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+@extend_schema(
+    tags=["items"],
+    description="""
+        CRUD для предмета
+    """
+)
 class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
     serializer_class = ItemSerializer
@@ -97,6 +121,13 @@ class ItemImageViewSet(viewsets.ModelViewSet):
     serializer_class = ItemImageSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
+
+@extend_schema(
+    tags=["reviews"],
+    description="""
+        CRUD для отзывов
+    """
+)
 class ReviewViewSet(viewsets.ModelViewSet):
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
@@ -139,6 +170,13 @@ class ReviewViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(reviews, many=True)
         return Response(serializer.data)
 
+
+@extend_schema(
+    tags=["search history"],
+    description="""
+        CRUD для истории поиска пользователя по сайту
+    """
+)
 class SearchHistoryViewSet(viewsets.ModelViewSet):
     queryset = SearchHistory.objects.all()
     serializer_class = SearchHistorySerializer
@@ -158,9 +196,14 @@ class SearchHistoryViewSet(viewsets.ModelViewSet):
         # Автоматически привязываем поиск к текущему пользователю
         serializer.save(user=self.request.user)
 
+    @extend_schema(
+        tags=["search history"],
+        description="""
+            Логгирование поискового запроса
+        """
+    )
     @action(detail=False, methods=['post'])
     def log_search(self, request):
-        """Логгирование поискового запроса"""
         data = request.data.copy()
         data['user'] = request.user.id
         serializer = self.get_serializer(data=data)
@@ -170,6 +213,12 @@ class SearchHistoryViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    tags=["view history"],
+    description="""
+        CRUD для истории просмотренных пользователем предметов
+    """
+)
 class ViewHistoryViewSet(viewsets.ModelViewSet):
     queryset = ViewHistory.objects.all()
     serializer_class = ViewHistorySerializer
@@ -189,9 +238,14 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
         # Автоматически привязываем просмотр к текущему пользователю
         serializer.save(user=self.request.user)
 
+    @extend_schema(
+        tags=["view history"],
+        description="""
+            Логгирование просмотра предмета
+        """
+    )
     @action(detail=False, methods=['post'])
     def log_view(self, request):
-        """Логгирование просмотра предмета"""
         data = request.data.copy()
         data['user'] = request.user.id
         serializer = self.get_serializer(data=data)
@@ -201,6 +255,12 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(
+    tags=["favorite item categories"],
+    description="""
+        CRUD для избранных категорий пользователя
+    """
+)
 class FavoriteCategoryViewSet(viewsets.ModelViewSet):
     queryset = FavoriteCategory.objects.all()
     serializer_class = FavoriteCategorySerializer
