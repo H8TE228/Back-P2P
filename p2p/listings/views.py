@@ -16,7 +16,7 @@ from .models import (
 from .serializers import (
     CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer,
     SearchHistorySerializer, ViewHistorySerializer, FavoriteCategorySerializer,
-    ReviewSerializer, 
+    ReviewSerializer, ItemDetailSerializer
 )
 
 @extend_schema(
@@ -72,10 +72,14 @@ class ItemTypeViewSet(viewsets.ModelViewSet):
 )
 class ItemViewSet(viewsets.ModelViewSet):
     queryset = Item.objects.all()
-    serializer_class = ItemSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     filter_backends = [DjangoFilterBackend]
     filterset_class = ItemFilter
+
+    def get_serializer_class(self):
+        if self.action == 'retrieve':
+            return ItemDetailSerializer
+        return ItemSerializer
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -110,6 +114,9 @@ class ItemViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=search) | Q(description__icontains=search)
             )
             
+        if self.action == 'retrieve':
+            return queryset.select_related('owner').all()
+        
         return queryset
 
     def perform_create(self, serializer):

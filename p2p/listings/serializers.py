@@ -2,6 +2,9 @@ from rest_framework import serializers
 from .models import Category, ItemType, Item, ItemImage, SearchHistory, ViewHistory, FavoriteCategory, Review
 from django.contrib.auth import get_user_model
 
+from users.serializers import UserSerializer
+
+
 User = get_user_model()
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -88,6 +91,26 @@ class ItemSerializer(serializers.ModelSerializer):
     #                 f'Интервалы пересекаются: end {current_slot['end']} накладывается на {next_slot['start']}'
     #             )
     #     return value
+
+
+class ItemDetailOwnerSerializer(UserSerializer):
+    
+    class Meta(UserSerializer.Meta):
+        fields = (
+            'id', 'email', 'username', 'first_name',
+            'last_name', 'phone_number', 'profile_picture',
+            'country', 'region', 'city', 'district',
+            'rating', 'reviews_count',
+        )
+        read_only_fields = ('id', 'rating', 'reviews_count')
+
+
+class ItemDetailSerializer(ItemSerializer):
+    owner = ItemDetailOwnerSerializer(read_only=True)
+
+    class Meta(ItemSerializer.Meta):
+        fields = ItemSerializer.Meta.fields
+
 
 class ReviewSerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source='author.username', read_only=True)
