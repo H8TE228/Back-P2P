@@ -30,6 +30,9 @@ class ItemTransactionView(APIView):
             После создания транзакции, она получает статус 'PENDING',
             т.е. она ещё должна получить от владельца предмета одобрение на аренду.
             (см. transactions/pending/)
+
+            Статусы у транзакции:
+            PENDING -> APPROVED (или REJECTED) -> ACTIVE -> RETURNING -> COMPLETED
         """
     )
     def post(self, request, item_id):
@@ -123,6 +126,10 @@ class TransactionDetailView(APIView):
             подтверждает, что он этот трактор получил, и статус вновь меняется уже на 'ACTIVE'.)
             - Транзакции со статусом 'RETURNING' - рентер захотел вернуть предмет, и до тех пор, пока владелец
             не подтвердит, что предмет ему вернули, транзакция имеет статус 'RETURNING' a.k.a. в процессе возвращения.
+
+        Статусы у транзакции:
+        PENDING -> APPROVED (или REJECTED) -> ACTIVE -> RETURNING -> COMPLETED
+        Запрос на аренду -> запрос подтвердили (или отклонили) -> сделка активна -> в процессе возврата -> завершена
     """
 )
 class PendingTransactionsView(generics.ListAPIView):
