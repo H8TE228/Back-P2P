@@ -75,6 +75,13 @@ class Item(models.Model):
 
     def __str__(self):
         return self.name
+    
+    @property
+    def main_image_obj(self):
+        for img in self.images.all():
+            if img.is_main:
+                return img
+        return None
 
     class Meta:
         verbose_name = "Предмет"

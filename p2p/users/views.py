@@ -1,3 +1,4 @@
+from django.db.models import Prefetch
 from django.shortcuts import render
 from django.contrib.auth import get_user_model
 from rest_framework import generics, permissions, status
@@ -5,13 +6,18 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
 
+from drf_spectacular.utils import extend_schema
+
 from .serializers import (
     CustomTokenObtainPairSerializer, 
     UserSerializer, 
     RegisterSerializer, 
     ChangePasswordSerializer,
-    LogoutSerializer
+    LogoutSerializer,
+    ProfilePageSerializer
 )
+
+from listings.models import Item, ItemImage
 
 User = get_user_model()
 
@@ -97,3 +103,27 @@ class LogoutView(generics.GenericAPIView):
                 {"error": "Invalid token"}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+
+@extend_schema(
+        summary="Профиль пользователя по id",
+        description="""
+            Возвращает базовую информацию о пользователе и его товары (последние 20 штук)
+        """
+    )
+class ProfilePageView(generics.RetrieveAPIView):
+    # queryset = User.objects.prefetch_related('owned_items__image')
+    serializer_class = ProfilePageSerializer
+    lookup_field = 'id'
+    permission_classes = [permissions.AllowAny]
+
+    def get_queryset(self):
+        main_images_qs = ItemImage.objects.filter(is_main=True)
+        products_qs = Item.objects.prefetch_related(
+            Prefetch('images', queryset=main_images_qs)
+        ).order_by('-updated_at')[:20]
+        return User.objects.prefetch_related(
+            Prefetch('owned_items', queryset=products_qs)
+        )
+
+

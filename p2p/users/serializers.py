@@ -5,6 +5,8 @@ from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.db.models import Avg
 from users.models import User
 
+from listings.models import Item, ItemImage
+
 User = get_user_model()
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
@@ -122,3 +124,30 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 class LogoutSerializer(serializers.Serializer):
     refresh = serializers.CharField(help_text='Refresh JWT token for adding to blacklist')
+
+
+class ProfileItemImageSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemImage
+        fields = ['url', 'alt_text']
+
+
+class ProfileItemSerializer(serializers.ModelSerializer):
+    # если нужно, чтобы подгружались все изображения, а не только main,
+    # то изменить тут и prefetch во view
+    image = ProfileItemImageSerializer(source="main_image_obj", read_only=True)
+
+    class Meta:
+        model = Item
+        fields = ['id', 'name', 'price', 'status', 'updated_at', 'image']
+
+
+class ProfilePageSerializer(serializers.ModelSerializer):
+    items = ProfileItemSerializer(source="owned_items", many=True, read_only=True)
+
+    class Meta:
+        model = User
+        fields = [
+            'id', 'username', 'phone_number', 'items',
+            'country', 'region', 'city', 'district',
+        ]
