@@ -78,6 +78,7 @@ class UserTransactionView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     filter_backends = [DjangoFilterBackend]
     filterset_fields = ['status', 'item', 'owner']
+    queryset = Transaction.objects.none()
 
     def get_queryset(self):
         return Transaction.objects.filter(Q(owner=self.request.user) | Q(renter=self.request.user))
