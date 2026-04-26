@@ -77,7 +77,7 @@ class ItemViewSet(viewsets.ModelViewSet):
     filterset_class = ItemFilter
 
     def get_serializer_class(self):
-        if self.action == 'retrieve':
+        if self.action in ['retrieve', 'list']:
             return ItemDetailSerializer
         return ItemSerializer
 

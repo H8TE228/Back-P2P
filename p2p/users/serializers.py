@@ -139,7 +139,10 @@ class ProfileItemSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Item
-        fields = ['id', 'name', 'price', 'status', 'updated_at', 'image']
+        fields = [
+            'id', 'name', 'price', 'status',
+            'updated_at', 'image', 'description',
+        ]
 
 
 class ProfilePageSerializer(serializers.ModelSerializer):
@@ -148,6 +151,7 @@ class ProfilePageSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = [
-            'id', 'username', 'phone_number', 'items',
+            'id', 'username', 'profile_picture', 'first_name', 'last_name',
+            'phone_number', 'email', 'items', # 'rating', 'reviews_count',
             'country', 'region', 'city', 'district',
         ]
