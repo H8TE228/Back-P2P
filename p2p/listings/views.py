@@ -1,4 +1,4 @@
-from rest_framework import viewsets, permissions, status
+from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, Avg
@@ -127,6 +127,25 @@ class ItemImageViewSet(viewsets.ModelViewSet):
     queryset = ItemImage.objects.all()
     serializer_class = ItemImageSerializer
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+
+
+@extend_schema(
+    tags=["items"],
+    summary="Список айтемов юзера",
+    description="""
+        Возвращает список принадлежащих юзеру айтемов
+    """
+)
+class MyItemsView(generics.ListAPIView):
+    serializer_class = ItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['status',]
+    queryset = Item.objects.none()
+
+    def get_queryset(self):
+        return Item.objects.filter(owner=self.request.user)
 
 
 @extend_schema(
