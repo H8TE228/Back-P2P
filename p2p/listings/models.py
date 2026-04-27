@@ -91,7 +91,7 @@ class Item(models.Model):
 
 class ItemImage(models.Model):
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='images')
-    url = models.URLField(help_text="URL изображения")
+    image = models.ImageField(upload_to='items/%Y/%m/%d/', help_text="Изображение предмета")
     alt_text = models.CharField(max_length=200, blank=True, null=True)
     is_main = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)

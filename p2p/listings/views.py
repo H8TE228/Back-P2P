@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from django.db.models import Q, Avg
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ItemFilter
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from drf_spectacular.utils import extend_schema
 
@@ -126,7 +128,31 @@ class ItemViewSet(viewsets.ModelViewSet):
 class ItemImageViewSet(viewsets.ModelViewSet):
     queryset = ItemImage.objects.all()
     serializer_class = ItemImageSerializer
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]
+
+    def get_queryset(self):
+        queryset = ItemImage.objects.all()
+        item_id = self.request.query_params.get('item')
+        if item_id:
+            queryset = queryset.filter(item_id=item_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        item = serializer.validated_data['item']
+        if item.owner != self.request.user:
+            raise PermissionDenied("Вы не владелец этого предмета")
+        serializer.save()
+
+    def perform_update(self, serializer):
+        if serializer.instance.item.owner != self.request.user:
+            raise PermissionDenied("Вы не владелец этого предмета")
+        serializer.save()
+
+    def perform_destroy(self, instance):
+        if instance.item.owner != self.request.user:
+            raise PermissionDenied("Вы не владелец этого предмета")
+        instance.delete()
 
 
 @extend_schema(
@@ -160,39 +186,44 @@ class ReviewViewSet(viewsets.ModelViewSet):
     permission_classes = [permissions.IsAuthenticatedOrReadOnly]
 
     def get_queryset(self):
-        queryset = Review.objects.all()
-        item_id = self.request.query_params.get('item_id', None)
-        recipient_id = self.request.query_params.get('recipient_id', None)
-        transaction_id = self.request.query_params.get('transaction_id', None)
+        queryset = Review.objects.select_related(
+            'author', 'recipient', 'item', 'transaction'
+        ).all()
+
+        item_id = self.request.query_params.get('item_id')
+        recipient_id = self.request.query_params.get('recipient_id')
+        author_id = self.request.query_params.get('author_id')
+        transaction_id = self.request.query_params.get('transaction_id')
 
         if item_id:
             queryset = queryset.filter(item_id=item_id)
         if recipient_id:
             queryset = queryset.filter(recipient_id=recipient_id)
+        if author_id:
+            queryset = queryset.filter(author_id=author_id)
+        if transaction_id:
+            queryset = queryset.filter(transaction_id=transaction_id)
         return queryset
 
-    def perform_create(self, serializer):
-        serializer.save(author=self.request.user)
-
-    @action(detail=False, methods=['get'])
+    @extend_schema(
+        tags=["reviews"],
+        summary="Отзывы, оставленные текущим пользователем",
+        description="Возвращает все отзывы, где автор — текущий пользователь.",
+    )
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def my_reviews(self, request):
-        reviews = Review.objects.filter(author=request.user)
+        reviews = self.get_queryset().filter(author=request.user)
         serializer = self.get_serializer(reviews, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
+    @extend_schema(
+        tags=["reviews"],
+        summary="Отзывы, полученные текущим пользователем",
+        description="Возвращает все отзывы, где получатель — текущий пользователь. Используется для вкладки «Отзывы» в профиле.",
+    )
+    @action(detail=False, methods=['get'], permission_classes=[permissions.IsAuthenticated])
     def received_reviews(self, request):
-        reviews = Review.objects.filter(recipient=request.user)
-        serializer = self.get_serializer(reviews, many=True)
-        return Response(serializer.data)
-    
-    @action(detail=False, methods=['get'])
-    def transaction_reviews(self, request, transaction_id=None):
-        """Получить все отзывы для конкретной транзакции (от арендатора и арендодателя)"""
-        transaction_id = self.request.query_params.get('transaction_id')
-        if not transaction_id:
-            return Response({'error': 'transaction_id required'}, status=status.HTTP_400_BAD_REQUEST)
-        reviews = Review.objects.filter(transaction_id=transaction_id)
+        reviews = self.get_queryset().filter(recipient=request.user)
         serializer = self.get_serializer(reviews, many=True)
         return Response(serializer.data)
 
