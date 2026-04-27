@@ -7,11 +7,10 @@ urlpatterns = [
     path('login/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
     path('register/', views.RegisterView.as_view(), name='register'),
     path('logout/', views.LogoutView.as_view(), name='logout'),
-    
+
     path('profile/', views.UserProfileView.as_view(), name='user_profile'),
     path('profile/change-password/', views.ChangePasswordView.as_view(), name='change_password'),
-    
-    path('users/', views.UserListView.as_view(), name='user_list'),
 
-    path('users/<int:id>/', views.ProfilePageView.as_view(), name='user_profile'),
+    path('users/', views.UserListView.as_view(), name='user_list'),
+    path('users/<int:id>/', views.ProfilePageView.as_view(), name='user_profile_page'),
 ]
