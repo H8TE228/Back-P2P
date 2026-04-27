@@ -22,9 +22,9 @@ router.register(r'favorite-categories', FavoriteCategoryViewSet, basename='favor
 
 
 urlpatterns = [
-    path('', include(router.urls)),
-
     path('item/my/', MyItemsView.as_view(), name='list-my-items'),
+
+    path('', include(router.urls)),
     
     path('reviews/<int:item_id>/', ReviewViewSet.as_view({
         'get': 'list',
