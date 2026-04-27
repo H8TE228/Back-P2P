@@ -12,6 +12,7 @@ from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
 
 from .models import Transaction
+from listings.models import Item
 from .serializers import TransactionSerializer
 from .permissions import CanApproveTransaction, CanReturnItem
 
@@ -31,23 +32,50 @@ class ItemTransactionView(APIView):
             т.е. она ещё должна получить от владельца предмета одобрение на аренду.
             (см. transactions/pending/)
 
+            Создание блокируется, если у этого арендатора уже есть незавершённая
+            транзакция на этот же предмет (pending / approved / active / returning).
+            Завершённые (completed) и отклонённые (rejected) транзакции не мешают
+            создать новую.
+
+            Также арендатор не может арендовать собственный предмет.
+
             Статусы у транзакции:
             PENDING -> APPROVED (или REJECTED) -> ACTIVE -> RETURNING -> COMPLETED
         """
     )
     def post(self, request, item_id):
-        transaction, created = Transaction.objects.get_or_create(
-            item_id = item_id,
-            renter = request.user,
-            defaults={'status': 'pending'},
-        )
-        if not created:
+        item = get_object_or_404(Item, pk=item_id)
+
+        if item.owner == request.user:
             return Response(
-                {"detail": "Данный предмет в настойщий момент уже находится в со-владении у этого пользователя"},
-                status=status.HTTP_400_BAD_REQUEST
+                {"detail": "Нельзя арендовать собственный предмет"},
+                status=status.HTTP_400_BAD_REQUEST,
             )
-        transaction.save()
-        return Response(status=status.HTTP_201_CREATED)
+
+        active_statuses = [
+            Transaction.Status.PENDING,
+            Transaction.Status.APPROVED,
+            Transaction.Status.ACTIVE,
+            Transaction.Status.RETURNING,
+        ]
+        existing = Transaction.objects.filter(
+            item_id=item_id,
+            renter=request.user,
+            status__in=active_statuses,
+        ).exists()
+        if existing:
+            return Response(
+                {"detail": "У вас уже есть активная транзакция на этот предмет"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        transaction = Transaction.objects.create(
+            item=item,
+            renter=request.user,
+            status=Transaction.Status.PENDING,
+        )
+        serializer = TransactionSerializer(transaction)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @extend_schema(
         tags=["transactions"],

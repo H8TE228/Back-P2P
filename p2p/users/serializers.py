@@ -129,7 +129,7 @@ class LogoutSerializer(serializers.Serializer):
 class ProfileItemImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemImage
-        fields = ['url', 'alt_text']
+        fields = ['image', 'alt_text']
 
 
 class ProfileItemSerializer(serializers.ModelSerializer):
