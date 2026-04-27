@@ -48,6 +48,9 @@ class ViewHistoryAdmin(admin.ModelAdmin):
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
-    list_display = ('id', 'item', 'author', 'transaction', 'rating', 'created_at')
+    list_display = ('id', 'item', 'author', 'recipient', 'transaction', 'rating', 'created_at')
     list_filter = ('rating', 'created_at')
-    search_fields = ('comment', 'author__username', 'item__name')
+    search_fields = ('comment', 'author__username', 'recipient__username', 'item__name')
+    readonly_fields = ('author', 'recipient', 'transaction', 'item', 'created_at', 'updated_at')
+    list_select_related = ('author', 'recipient', 'item', 'transaction')
+    raw_id_fields = ('author', 'recipient', 'transaction', 'item')

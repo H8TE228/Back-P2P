@@ -28,7 +28,8 @@ class ItemTypeSerializer(serializers.ModelSerializer):
 class ItemImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = ItemImage
-        fields = ['id', 'url', 'alt_text', 'is_main']
+        fields = ['id', 'item', 'image', 'alt_text', 'is_main', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 class AvaliabilityCalendarSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
@@ -44,8 +45,7 @@ class ItemSerializer(serializers.ModelSerializer):
     type_name = serializers.CharField(source='type.name', read_only=True)
     category_name = serializers.CharField(source='type.category.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
-    images = ItemImageSerializer(many=True, required=False)
-    #avaliability_calendar = AvaliabilityCalendarSerializer(many=True)
+    images = ItemImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = Item
@@ -126,33 +126,34 @@ class ReviewSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'author', 'item', 'recipient', 'created_at', 'updated_at']
 
+    def validate_transaction(self, value):
+        if value.status != 'completed':
+            raise serializers.ValidationError(
+                "Отзыв можно оставить только после завершения транзакции"
+            )
+        author = self.context['request'].user
+        if author not in [value.owner, value.renter]:
+            raise serializers.ValidationError(
+                "Только участники транзакции могут оставить отзыв"
+            )
+        if Review.objects.filter(transaction=value, author=author).exists():
+            raise serializers.ValidationError(
+                "Вы уже оставили отзыв на эту транзакцию"
+            )
+        return value
+
     def create(self, validated_data):
         transaction = validated_data['transaction']
         author = self.context['request'].user
 
         if author == transaction.renter:
             validated_data['recipient'] = transaction.owner
-        elif author == transaction.owner:
-            validated_data['recipient'] = transaction.renter
         else:
-            raise serializers.ValidationError("Только участники транзакции могут оставить отзыв")
+            validated_data['recipient'] = transaction.renter
 
         validated_data['author'] = author
-        validated_data['author'] = self.context['request'].user
         validated_data['item'] = transaction.item
         return super().create(validated_data)
-
-    def validate_transaction(self, value):
-        if value.status != 'completed':
-            raise serializers.ValidationError("Отзыв можно оставить только после завершения транзакции")
-        author = self.context['request'].user
-        if author not in [value.owner, value.renter]:
-            raise serializers.ValidationError("Только участники транзакции могут оставить отзыв")
-
-        existing_review = Review.objects.filter(transaction=value, author=author).exists()
-        if existing_review:
-            raise serializers.ValidationError("Вы уже оставили отзыв на эту транзакцию")
-
 
 class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:
