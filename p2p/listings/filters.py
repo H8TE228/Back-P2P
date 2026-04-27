@@ -24,6 +24,7 @@ class ItemFilter(django_filters.FilterSet):
             'created_at': ['gte', 'lte'],
         }
 
+
     def filter_search(self, queryset, name, value):
         return queryset.filter(
             name__icontains=value) | queryset.filter(
