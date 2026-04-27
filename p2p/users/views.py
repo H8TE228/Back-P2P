@@ -121,7 +121,7 @@ class ProfilePageView(generics.RetrieveAPIView):
         main_images_qs = ItemImage.objects.filter(is_main=True)
         products_qs = Item.objects.prefetch_related(
             Prefetch('images', queryset=main_images_qs)
-        ).order_by('-updated_at')[:20]
+        ).order_by('-updated_at')
         return User.objects.prefetch_related(
             Prefetch('owned_items', queryset=products_qs)
         )

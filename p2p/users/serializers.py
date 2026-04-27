@@ -155,3 +155,8 @@ class ProfilePageSerializer(serializers.ModelSerializer):
             'phone_number', 'email', 'items', # 'rating', 'reviews_count',
             'country', 'region', 'city', 'district',
         ]
+
+    # ограничение на 20 айтемов. изменить / удалить если не нужно
+    def get_items(self, obj):
+        items_queryset = obj.owned_items.all()[:20]
+        return ProfileItemSerializer(items_queryset, many=True, context=self.context).data
