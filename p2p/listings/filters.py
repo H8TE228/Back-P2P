@@ -10,6 +10,10 @@ class ItemFilter(django_filters.FilterSet):
         lookup_expr='iexact',
     )
     type = django_filters.NumberFilter(field_name='type_id')
+    type_name = django_filters.CharFilter(
+        field_name='type__name',
+        lookup_expr='iexact',
+    )
     owner = django_filters.NumberFilter(field_name='owner_id')
     search = django_filters.CharFilter(method='filter_search')
 
@@ -19,7 +23,6 @@ class ItemFilter(django_filters.FilterSet):
             'status': ['exact'],
             'created_at': ['gte', 'lte'],
         }
-
 
     def filter_search(self, queryset, name, value):
         return queryset.filter(
