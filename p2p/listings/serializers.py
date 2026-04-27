@@ -7,10 +7,17 @@ from users.serializers import UserSerializer
 
 User = get_user_model()
 
+class CategoryTypeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ItemType
+        fields = ['id', 'name']
+
 class CategorySerializer(serializers.ModelSerializer):
+    types = CategoryTypeSerializer(many=True, read_only=True)
+
     class Meta:
         model = Category
-        fields = ['id', 'name', 'created_at', 'updated_at']
+        fields = ['id', 'name', 'types', 'created_at', 'updated_at']
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 class ItemTypeSerializer(serializers.ModelSerializer):
