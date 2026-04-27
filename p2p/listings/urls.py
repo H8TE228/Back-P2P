@@ -9,6 +9,7 @@ from .views import (
     SearchHistoryViewSet,
     ViewHistoryViewSet,
     FavoriteCategoryViewSet,
+    MyItemsView,
 )
 
 router = DefaultRouter()
@@ -24,5 +25,6 @@ router.register(r'favorite-categories', FavoriteCategoryViewSet, basename='favor
 
 
 urlpatterns = [
+    path('item/my/', MyItemsView.as_view(), name='list-my-items'),
     path('', include(router.urls)),
 ]
