@@ -118,12 +118,9 @@ class ProfilePageView(generics.RetrieveAPIView):
     permission_classes = [permissions.AllowAny]
 
     def get_queryset(self):
-        main_images_qs = ItemImage.objects.filter(is_main=True)
-        products_qs = Item.objects.prefetch_related(
-            Prefetch('images', queryset=main_images_qs)
-        ).order_by('-updated_at')
         return User.objects.prefetch_related(
-            Prefetch('owned_items', queryset=products_qs)
+            'owned_items',
+            'owned_items__images',
         )
 
 

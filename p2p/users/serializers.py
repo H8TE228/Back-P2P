@@ -146,17 +146,29 @@ class ProfileItemSerializer(serializers.ModelSerializer):
 
 
 class ProfilePageSerializer(serializers.ModelSerializer):
-    items = ProfileItemSerializer(source="owned_items", many=True, read_only=True)
+    items = serializers.SerializerMethodField()
+    rating = serializers.SerializerMethodField()
+    reviews_count = serializers.SerializerMethodField()
 
     class Meta:
         model = User
         fields = [
             'id', 'username', 'profile_picture', 'first_name', 'last_name',
-            'phone_number', 'email', 'items', # 'rating', 'reviews_count',
+            'phone_number', 'email',
             'country', 'region', 'city', 'district',
+            'rating', 'reviews_count', 'items',
         ]
 
-    # ограничение на 20 айтемов. изменить / удалить если не нужно
     def get_items(self, obj):
+        from listings.serializers import ItemDetailSerializer
         items_queryset = obj.owned_items.all()[:20]
-        return ProfileItemSerializer(items_queryset, many=True, context=self.context).data
+        return ItemDetailSerializer(items_queryset, many=True, context=self.context).data
+
+    def get_rating(self, obj):
+        from listings.models import Review
+        avg_rating = Review.objects.filter(recipient=obj).aggregate(avg=Avg('rating'))['avg']
+        return float(round(avg_rating, 2)) if avg_rating else None
+
+    def get_reviews_count(self, obj):
+        from listings.models import Review
+        return Review.objects.filter(recipient=obj).count()
