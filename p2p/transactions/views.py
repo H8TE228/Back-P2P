@@ -69,11 +69,12 @@ class ItemTransactionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        transaction = Transaction.objects.create(
+        transaction = Transaction(
             item=item,
             renter=request.user,
             status=Transaction.Status.PENDING,
         )
+        transaction.change_status(Transaction.Status.PENDING)
         serializer = TransactionSerializer(transaction)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -195,14 +196,14 @@ class TransactionApprovalView(APIView):
 
         match transaction.status:
             case Transaction.Status.PENDING:
-                transaction.status = Transaction.Status.APPROVED
+                transaction.change_status(Transaction.Status.APPROVED)
             case Transaction.Status.APPROVED:
-                transaction.status = Transaction.Status.ACTIVE
+                transaction.change_status(Transaction.Status.ACTIVE)
             case Transaction.Status.RETURNING:
                 transaction.status = Transaction.Status.COMPLETED
                 transaction.returned_at = timezone.now()
+                transaction.save()
 
-        transaction.save()
         return Response({
             "id": transaction.id,
             "new_status": transaction.status

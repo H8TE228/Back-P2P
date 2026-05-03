@@ -1,4 +1,5 @@
-from django.db import models
+from django.db import models, transaction
+from rest_framework.exceptions import ValidationError
 from django.utils import timezone
 from users.models import User
 from listings.models import Item
@@ -28,3 +29,26 @@ class Transaction(models.Model):
         if self.status == self.Status.COMPLETED and not self.returned_at:
             self.returned_at = timezone.now()
         super().save(*args, **kwargs)
+
+    def change_status(self, new_status):
+        status_check = [
+            self.Status.PENDING,
+            self.Status.APPROVED,
+        ]
+        active_transaction = [
+            self.Status.APPROVED, 
+            self.Status.ACTIVE, 
+            self.Status.RETURNING,
+        ]
+        with transaction.atomic():
+            if new_status in status_check:
+                item = Item.objects.select_for_update().get(pk=self.item_id)
+                active_count = item.transactions.filter(
+                    status__in=active_transaction
+                ).exclude(pk=self.pk).count()
+                
+                if active_count >= item.max_active_transactions:
+                    raise ValidationError(f"Лимит активных транзакций ({item.max_active_transactions}) исчерпан.")
+                
+            self.status = new_status
+            self.save()

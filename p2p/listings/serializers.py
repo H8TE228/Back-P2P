@@ -59,7 +59,8 @@ class ItemSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'type', 'type_name', 'category_name', 'owner', 'owner_name',
             'name', 'description', 'characteristics', 'status', 'price',
-            'images', 'created_at', 'updated_at'
+            'images', 'created_at', 'updated_at',
+            'delivery_method', 'max_active_transactions',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 

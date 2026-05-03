@@ -54,6 +54,10 @@ class FavoriteCategory(models.Model):
 
 
 class Item(models.Model):
+    class DeliveryMethods(models.TextChoices):
+        PICKUP = "pickup", "pickup"
+        MAIL = "mail", "mail"
+
     STATUS_CHOICES = [
         ('available', 'Доступен'),
         ('rented', 'Сдан'),
@@ -69,6 +73,8 @@ class Item(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     avaliability_calendar = models.JSONField(default=list, blank=True)
+    delivery_method = models.CharField(max_length=6, choices=DeliveryMethods, default=DeliveryMethods.PICKUP, blank=True)
+    max_active_transactions = models.IntegerField(default=1, blank=True)
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
