@@ -21,15 +21,15 @@ class TransactionSerializer(serializers.ModelSerializer):
             'item_name', 'renter_name', 'owner_name',
         ]
 
-        def validate_planned_start(self, value):
-            if value < timezone.now():
-                raise serializers.ValidationError('Дата не может быть в прошлом')
-            return value
+    def validate_planned_start(self, value):
+        if value < timezone.now():
+            raise serializers.ValidationError('Дата не может быть в прошлом')
+        return value
 
-        def validate(self, data):
-            if data['start_date'] > data['end_date']:
-                raise serializers.ValidationError({
-                    "end_date": "Дата окончания не может быть раньше даты начала."
-                })
-            return data
+    def validate(self, data):
+        if data['planned_start'] > data['planned_end']:
+            raise serializers.ValidationError({
+                "end_date": "Дата окончания не может быть раньше даты начала."
+            })
+        return data
 

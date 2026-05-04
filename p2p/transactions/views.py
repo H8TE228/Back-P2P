@@ -70,14 +70,19 @@ class ItemTransactionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        transaction = Transaction(
-            item=item,
-            renter=request.user,
-            status=Transaction.Status.PENDING,
-        )
-        transaction.change_status(Transaction.Status.PENDING)
-        serializer = TransactionSerializer(transaction)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        serializer = TransactionSerializer(data=request.data)
+        if serializer.is_valid():
+            transaction = Transaction(
+                item=item,
+                renter=request.user,
+                status=Transaction.Status.PENDING,
+                planned_start=serializer.validated_data.get('planned_start'),
+                planned_end=serializer.validated_data.get('planned_end'),
+            )
+            transaction.change_status(Transaction.Status.PENDING)
+            serializer = TransactionSerializer(transaction)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["transactions"],
