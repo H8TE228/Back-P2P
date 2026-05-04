@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Category, ItemType, Item, ItemImage, SearchHistory, ViewHistory, FavoriteCategory, Review
+from .models import Category, ItemType, Item, ItemImage, Notification, SearchHistory, ViewHistory, FavoriteCategory, FavoriteItem, Review
 from django.contrib.auth import get_user_model
 
 from users.serializers import UserSerializer
@@ -166,16 +166,16 @@ class ReviewSerializer(serializers.ModelSerializer):
 class SearchHistorySerializer(serializers.ModelSerializer):
     class Meta:
         model = SearchHistory
-        fields = ['id', 'query_text', 'filters', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'query_text', 'filters', 'created_at', 'last_searched_at']
+        read_only_fields = ['id', 'created_at', 'last_searched_at']
 
 class ViewHistorySerializer(serializers.ModelSerializer):
     item_name = serializers.CharField(source='item.name', read_only=True)
 
     class Meta:
         model = ViewHistory
-        fields = ['id', 'item', 'item_name', 'created_at']
-        read_only_fields = ['id', 'created_at']
+        fields = ['id', 'item', 'item_name', 'created_at', 'last_viewed_at']
+        read_only_fields = ['id', 'created_at', 'last_viewed_at']
 
 class FavoriteCategorySerializer(serializers.ModelSerializer):
     category = CategorySerializer(read_only=True)
@@ -187,3 +187,24 @@ class FavoriteCategorySerializer(serializers.ModelSerializer):
         model = FavoriteCategory
         fields = ['id', 'category', 'category_id', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class FavoriteItemSerializer(serializers.ModelSerializer):
+    item = ItemDetailSerializer(read_only=True)
+    item_id = serializers.PrimaryKeyRelatedField(
+        queryset=Item.objects.all(), source='item', write_only=True
+    )
+
+    class Meta:
+        model = FavoriteItem
+        fields = ['id', 'item', 'item_id', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    item_name = serializers.CharField(source='item.name', read_only=True)
+
+    class Meta:
+        model = Notification
+        fields = ['id', 'kind', 'item', 'item_name', 'message', 'is_read', 'created_at']
+        read_only_fields = ['id', 'kind', 'item', 'item_name', 'message', 'created_at']

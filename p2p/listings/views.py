@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, Avg
+from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ItemFilter
 from rest_framework.exceptions import PermissionDenied
@@ -11,13 +12,14 @@ from drf_spectacular.utils import extend_schema
 
 
 from .models import (
-    Category, ItemType, Item, ItemImage, 
-    SearchHistory, ViewHistory, FavoriteCategory,
-    Review, 
+    Category, ItemType, Item, ItemImage, Notification, 
+    SearchHistory, ViewHistory, FavoriteCategory, FavoriteItem,
+    Review,
 )
 from .serializers import (
-    CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer,
+    CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer, NotificationSerializer,
     SearchHistorySerializer, ViewHistorySerializer, FavoriteCategorySerializer,
+    FavoriteItemSerializer,
     ReviewSerializer, ItemDetailSerializer
 )
 
@@ -123,6 +125,16 @@ class ItemViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)
+
+    def list(self, request, *args, **kwargs):
+        response = super().list(request, *args, **kwargs)
+        try:
+            from .services import log_item_search
+            log_item_search(request.user, request.query_params)
+        except Exception:
+            # не валим запрос из-за проблем с историей поиска
+            pass
+        return response
 
 
 class ItemImageViewSet(viewsets.ModelViewSet):
@@ -241,7 +253,6 @@ class SearchHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Суперпользователь видит все, обычные - только свои
         if user.is_superuser:
             user_id = self.kwargs.get('user_id')
             if user_id:
@@ -250,30 +261,42 @@ class SearchHistoryViewSet(viewsets.ModelViewSet):
         return SearchHistory.objects.filter(user=user)
 
     def perform_create(self, serializer):
-        # Автоматически привязываем поиск к текущему пользователю
         serializer.save(user=self.request.user)
+
 
     @extend_schema(
         tags=["search history"],
         description="""
-            Логгирование поискового запроса
+            Логирование поискового запроса (явное, по кнопке "Искать" с фронта).
+            Принимает те же query-параметры, что и GET /listings/item/.
+            Дедуплицируется так же, как автоматическое логирование:
+            повторный одинаковый поиск не плодит дубли, обновляется last_searched_at.
         """
     )
     @action(detail=False, methods=['post'])
     def log_search(self, request):
-        data = request.data.copy()
-        data['user'] = request.user.id
-        serializer = self.get_serializer(data=data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        from .services import log_item_search
+        params = request.query_params if request.query_params else request.data
+        entry, created = log_item_search(request.user, params)
+        if entry is None:
+            return Response(
+                {'detail': 'Пустой запрос — нечего логировать.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        serializer = self.get_serializer(entry)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
 
 @extend_schema(
     tags=["view history"],
     description="""
-        CRUD для истории просмотренных пользователем предметов
+        История просмотров пользователя.
+        Каждая пара (user, item) хранится одной записью.
+        Повторный просмотр того же предмета не создаёт новую запись —
+        обновляется только last_viewed_at.
     """
 )
 class ViewHistoryViewSet(viewsets.ModelViewSet):
@@ -283,33 +306,43 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Суперпользователь видит все, обычные - только свои
         if user.is_superuser:
-            user_id = self.kwargs.get('user_id')
+            user_id = self.request.query_params.get('user_id')
             if user_id:
-                return ViewHistory.objects.filter(user_id=user_id)
-            return ViewHistory.objects.all()
-        return ViewHistory.objects.filter(user=user)
+                return ViewHistory.objects.filter(user_id=user_id).select_related('item')
+            return ViewHistory.objects.all().select_related('item', 'user')
+        return ViewHistory.objects.filter(user=user).select_related('item')
 
-    def perform_create(self, serializer):
-        # Автоматически привязываем просмотр к текущему пользователю
-        serializer.save(user=self.request.user)
+    def create(self, request, *args, **kwargs):
+        # дедупликация: одна пара (user, item) — одна запись
+        item_id = request.data.get('item')
+        if not item_id:
+            return Response(
+                {'item': 'Это поле обязательно.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        view, created = ViewHistory.objects.update_or_create(
+            user=request.user,
+            item_id=item_id,
+            # last_viewed_at обновится автоматически через auto_now=True
+        )
+        serializer = self.get_serializer(view)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
 
     @extend_schema(
         tags=["view history"],
         description="""
-            Логгирование просмотра предмета
+            Алиас для POST на /view-history/ — логирует просмотр предмета.
+            Если просмотр уже был — обновляет last_viewed_at.
         """
     )
     @action(detail=False, methods=['post'])
     def log_view(self, request):
-        data = request.data.copy()
-        data['user'] = request.user.id
-        serializer = self.get_serializer(data=data)
-        if serializer.is_valid():
-            serializer.save(user=request.user)
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return self.create(request)
 
 
 @extend_schema(
@@ -329,3 +362,76 @@ class FavoriteCategoryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+
+@extend_schema(
+    tags=["favorite items"],
+    description="""
+        CRUD для избранных предметов пользователя.
+        При добавлении предмета в избранное — запись будет создана,
+        если её ещё нет (повтор не плодит дубли).
+        Когда предмет освобождается из аренды (active/returning -> completed),
+        пользователю автоматически создаётся уведомление (см. /notifications/).
+    """
+)
+class FavoriteItemViewSet(viewsets.ModelViewSet):
+    serializer_class = FavoriteItemSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return FavoriteItem.objects.filter(
+            user=self.request.user
+        ).select_related('item', 'item__type', 'item__type__category', 'item__owner')
+
+    def create(self, request, *args, **kwargs):
+        item_id = request.data.get('item_id') or request.data.get('item')
+        if not item_id:
+            return Response(
+                {'item_id': 'Это поле обязательно.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        item = get_object_or_404(Item, pk=item_id)
+        favorite, created = FavoriteItem.objects.get_or_create(
+            user=request.user,
+            item=item,
+        )
+        serializer = self.get_serializer(favorite)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        )
+    
+
+@extend_schema(
+    tags=["notifications"],
+    description="""
+        Уведомления текущего пользователя.
+        GET /notifications/ — список (с пагинацией).
+        PATCH /notifications/<id>/ — пометить как прочитанное (передать is_read=true).
+        DELETE /notifications/<id>/ — удалить.
+    """
+)
+class NotificationViewSet(
+    viewsets.GenericViewSet,
+    generics.mixins.ListModelMixin,
+    generics.mixins.RetrieveModelMixin,
+    generics.mixins.UpdateModelMixin,
+    generics.mixins.DestroyModelMixin,
+):
+    serializer_class = NotificationSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Notification.objects.filter(
+            user=self.request.user
+        ).select_related('item')
+
+    @extend_schema(
+        tags=["notifications"],
+        summary="Пометить все уведомления как прочитанные",
+    )
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        updated = self.get_queryset().filter(is_read=False).update(is_read=True)
+        return Response({'updated': updated})

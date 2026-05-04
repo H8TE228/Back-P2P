@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Category, ItemType, FavoriteCategory, Item, ItemImage,
+    Category, ItemType, Notification, FavoriteCategory, FavoriteItem, Item, ItemImage,
     SearchHistory, ViewHistory, Review
 )
 
@@ -36,15 +36,23 @@ class ItemImageAdmin(admin.ModelAdmin):
 
 @admin.register(SearchHistory)
 class SearchHistoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'query_text', 'created_at')
-    list_filter = ('user', 'created_at')
-    search_fields = ('query_text', 'user__username')
+    list_display = ('id', 'user', 'query_text', 'filters', 'created_at', 'last_searched_at')
+    list_filter = ('created_at', 'last_searched_at')
+    search_fields = ('query_text', 'user__username', 'user__email')
+    readonly_fields = ('user', 'query_text', 'filters', 'created_at', 'last_searched_at')
+    list_select_related = ('user',)
+    raw_id_fields = ('user',)
+    ordering = ('-last_searched_at',)
 
 @admin.register(ViewHistory)
 class ViewHistoryAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'item', 'created_at')
-    list_filter = ('user', 'created_at')
-    search_fields = ('user__username', 'item__name')
+    list_display = ('id', 'user', 'item', 'created_at', 'last_viewed_at')
+    list_filter = ('created_at', 'last_viewed_at')
+    search_fields = ('user__username', 'user__email', 'item__name')
+    readonly_fields = ('user', 'item', 'created_at', 'last_viewed_at')
+    list_select_related = ('user', 'item')
+    raw_id_fields = ('user', 'item')
+    ordering = ('-last_viewed_at',)
 
 @admin.register(Review)
 class ReviewAdmin(admin.ModelAdmin):
@@ -54,3 +62,23 @@ class ReviewAdmin(admin.ModelAdmin):
     readonly_fields = ('author', 'recipient', 'transaction', 'item', 'created_at', 'updated_at')
     list_select_related = ('author', 'recipient', 'item', 'transaction')
     raw_id_fields = ('author', 'recipient', 'transaction', 'item')
+
+
+@admin.register(FavoriteItem)
+class FavoriteItemAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'item', 'created_at')
+    list_filter = ('created_at',)
+    search_fields = ('user__username', 'user__email', 'item__name')
+    readonly_fields = ('user', 'item', 'created_at')
+    list_select_related = ('user', 'item')
+    raw_id_fields = ('user', 'item')
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'kind', 'item', 'is_read', 'created_at')
+    list_filter = ('kind', 'is_read', 'created_at')
+    search_fields = ('user__username', 'user__email', 'item__name', 'message')
+    readonly_fields = ('user', 'kind', 'item', 'message', 'created_at')
+    list_select_related = ('user', 'item')
+    raw_id_fields = ('user', 'item')
