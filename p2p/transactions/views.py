@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from django_filters.rest_framework import DjangoFilterBackend
@@ -196,7 +197,13 @@ class TransactionApprovalView(APIView):
 
         match transaction.status:
             case Transaction.Status.PENDING:
-                transaction.change_status(Transaction.Status.APPROVED)
+                with db_transaction.atomic():
+                    transaction.change_status(Transaction.Status.APPROVED)
+                    transaction.item.add_to_calendar(
+                        user_id=transaction.renter.pk,
+                        start=transaction.planned_start,
+                        end=transaction.planned_end 
+                    )
             case Transaction.Status.APPROVED:
                 transaction.change_status(Transaction.Status.ACTIVE)
             case Transaction.Status.RETURNING:

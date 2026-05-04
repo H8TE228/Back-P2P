@@ -1,6 +1,7 @@
-from django.db import models
+from django.db import models, transaction
 from django.contrib.auth import get_user_model
 from django.core.validators import MinValueValidator, MaxValueValidator
+from rest_framework.exceptions import ValidationError
 
 User = get_user_model()
 
@@ -72,7 +73,7 @@ class Item(models.Model):
     characteristics = models.JSONField(default=dict, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='available')
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
-    avaliability_calendar = models.JSONField(default=list, blank=True)
+    availability_calendar = models.JSONField(default=list, blank=True)
     delivery_method = models.CharField(max_length=6, choices=DeliveryMethods, default=DeliveryMethods.PICKUP, blank=True)
     max_active_transactions = models.IntegerField(default=1, blank=True)
     
@@ -88,6 +89,31 @@ class Item(models.Model):
             if img.is_main:
                 return img
         return None
+    
+    def add_to_calendar(self, user_id, start, end):
+        with transaction.atomic():
+            obj = Item.objects.select_for_update().get(pk=self.pk)
+            
+            new_entry = {
+                "user_id": user_id,
+                "start": start.isoformat() if hasattr(start, 'isoformat') else start,
+                "end": end.isoformat() if hasattr(end, 'isoformat') else end
+            }
+            
+            if obj.availability_calendar is None:
+                obj.availability_calendar = []
+
+            for entry in obj.availability_calendar:
+                if new_entry.get('start') < entry['end'] and new_entry.get('end') > entry['start']:
+                    raise ValidationError(
+                        f"Ошибочка: даты {new_entry.get('start')} - {new_entry.get('end')} пересекаются с {entry['start']} - {entry['end']}"
+                    )
+            
+            obj.availability_calendar.append(new_entry)
+            obj.save()
+            
+            self.refresh_from_db()
+        
 
     class Meta:
         verbose_name = "Предмет"

@@ -38,7 +38,7 @@ class ItemImageSerializer(serializers.ModelSerializer):
         fields = ['id', 'item', 'image', 'alt_text', 'is_main', 'created_at']
         read_only_fields = ['id', 'created_at']
 
-class AvaliabilityCalendarSerializer(serializers.Serializer):
+class AvailabilityCalendarSerializer(serializers.Serializer):
     user_id = serializers.IntegerField()
     start = serializers.DateTimeField()
     end = serializers.DateTimeField()
@@ -53,6 +53,7 @@ class ItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='type.category.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     images = ItemImageSerializer(many=True, read_only=True)
+    availability_calendar = AvailabilityCalendarSerializer(many=True)
 
     class Meta:
         model = Item
@@ -61,6 +62,7 @@ class ItemSerializer(serializers.ModelSerializer):
             'name', 'description', 'characteristics', 'status', 'price',
             'images', 'created_at', 'updated_at',
             'delivery_method', 'max_active_transactions',
+            'availability_calendar',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
 
@@ -85,20 +87,16 @@ class ItemSerializer(serializers.ModelSerializer):
         
         return instance
     
-    # def validate_avaliability_calendar(self, value):
-    #     serializer = AvaliabilityCalendarSerializer(data=value, many=True)
-    #     if not serializer.is_valid():
-    #         raise serializers.ValidationError(serializer.errors)
-        
-    #     sorted_dates = sorted(value, key=lambda x: x['start'])
-    #     for i in range(len(sorted_dates) - 1):
-    #         current_slot = sorted_dates[i]
-    #         next_slot = sorted_dates[i+1]
-    #         if next_slot['start'] < current_slot['end']:
-    #             raise serializers.ValidationError(
-    #                 f'Интервалы пересекаются: end {current_slot['end']} накладывается на {next_slot['start']}'
-    #             )
-    #     return value
+    def validate_availability_calendar(self, value):
+        sorted_dates = sorted(value, key=lambda x: x['start'])
+        for i in range(len(sorted_dates) - 1):
+            current_slot = sorted_dates[i]
+            next_slot = sorted_dates[i+1]
+            if next_slot['start'] < current_slot['end']:
+                raise serializers.ValidationError(
+                    f'Интервалы пересекаются: end {current_slot["end"]} накладывается на {next_slot["start"]}'
+                )
+        return value
 
 
 class ItemDetailOwnerSerializer(UserSerializer):
