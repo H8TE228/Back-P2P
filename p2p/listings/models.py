@@ -139,23 +139,26 @@ class ItemImage(models.Model):
 
 class SearchHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='search_history')
-    query_text = models.TextField()
+    query_text = models.CharField(max_length=255, blank=True, default='')
     filters = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    last_searched_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"{self.user.username}: {self.query_text[:30]}"
+        text = self.query_text or '<без текста>'
+        return f"{self.user.username}: {text[:30]}"
 
     class Meta:
         verbose_name = "История поиска"
         verbose_name_plural = "Истории поиска"
-        ordering = ['-created_at']
+        ordering = ['-last_searched_at']
 
 
 class ViewHistory(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='view_history')
     item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='viewers')
     created_at = models.DateTimeField(auto_now_add=True)
+    last_viewed_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.user.username} viewed {self.item.name}"
@@ -163,7 +166,8 @@ class ViewHistory(models.Model):
     class Meta:
         verbose_name = "История просмотра"
         verbose_name_plural = "Истории просмотров"
-        ordering = ['-created_at']
+        ordering = ['-last_viewed_at']
+        unique_together = ['user', 'item']
 
 
 class Review(models.Model):
@@ -185,3 +189,46 @@ class Review(models.Model):
         verbose_name_plural = "Отзывы"
         ordering = ['-created_at']
         unique_together = ['author', 'transaction']
+
+
+class FavoriteItem(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='favorite_items_rel')
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='favorited_by')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.user.username} ❤ {self.item.name}"
+
+    class Meta:
+        verbose_name = "Избранный предмет"
+        verbose_name_plural = "Избранные предметы"
+        ordering = ['-created_at']
+        unique_together = ['user', 'item']
+
+
+class Notification(models.Model):
+    """
+    Минимальная модель уведомлений для MVP.
+    Создаётся бэкендом, потребляется фронтом через polling.
+    Push/email/websocket-доставка — за рамками MVP.
+    """
+    class Kind(models.TextChoices):
+        FAVORITE_ITEM_AVAILABLE = "favorite_available", "Избранный предмет освободился"
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
+    kind = models.CharField(max_length=32, choices=Kind.choices)
+    item = models.ForeignKey(
+        Item, on_delete=models.CASCADE, related_name='notifications',
+        null=True, blank=True,
+    )
+    message = models.CharField(max_length=255)
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"[{self.kind}] {self.user.username}: {self.message[:40]}"
+
+    class Meta:
+        verbose_name = "Уведомление"
+        verbose_name_plural = "Уведомления"
+        ordering = ['-created_at']

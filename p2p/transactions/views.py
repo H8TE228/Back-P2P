@@ -215,11 +215,36 @@ class TransactionApprovalView(APIView):
                 transaction.status = Transaction.Status.COMPLETED
                 transaction.returned_at = timezone.now()
                 transaction.save()
+                item_freed = True
+        
+        if item_freed:
+            self._notify_favoriters(transaction.item)
 
         return Response({
             "id": transaction.id,
             "new_status": transaction.status
         }, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _notify_favoriters(item):
+        """
+        Создаёт уведомления для всех пользователей, у кого `item` в избранном
+        и которые не являются текущим арендатором/владельцем.
+        """
+        from listings.models import FavoriteItem, Notification
+
+        favoriters = FavoriteItem.objects.filter(item=item).select_related('user')
+        notifications = [
+            Notification(
+                user=fav.user,
+                kind=Notification.Kind.FAVORITE_ITEM_AVAILABLE,
+                item=item,
+                message=f'Предмет «{item.name}» снова доступен для аренды',
+            )
+            for fav in favoriters
+        ]
+        if notifications:
+            Notification.objects.bulk_create(notifications)
     
 
 # reject
