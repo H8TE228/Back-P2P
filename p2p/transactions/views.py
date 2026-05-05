@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
+from django.db import transaction as db_transaction
 from django.utils import timezone
 
 from django_filters.rest_framework import DjangoFilterBackend
@@ -69,14 +70,19 @@ class ItemTransactionView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        transaction = Transaction(
-            item=item,
-            renter=request.user,
-            status=Transaction.Status.PENDING,
-        )
-        transaction.change_status(Transaction.Status.PENDING)
-        serializer = TransactionSerializer(transaction)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        serializer = TransactionSerializer(data=request.data)
+        if serializer.is_valid():
+            transaction = Transaction(
+                item=item,
+                renter=request.user,
+                status=Transaction.Status.PENDING,
+                planned_start=serializer.validated_data.get('planned_start'),
+                planned_end=serializer.validated_data.get('planned_end'),
+            )
+            transaction.change_status(Transaction.Status.PENDING)
+            serializer = TransactionSerializer(transaction)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         tags=["transactions"],
@@ -196,7 +202,13 @@ class TransactionApprovalView(APIView):
 
         match transaction.status:
             case Transaction.Status.PENDING:
-                transaction.change_status(Transaction.Status.APPROVED)
+                with db_transaction.atomic():
+                    transaction.change_status(Transaction.Status.APPROVED)
+                    transaction.item.add_to_calendar(
+                        user_id=transaction.renter.pk,
+                        start=transaction.planned_start,
+                        end=transaction.planned_end 
+                    )
             case Transaction.Status.APPROVED:
                 transaction.change_status(Transaction.Status.ACTIVE)
             case Transaction.Status.RETURNING:

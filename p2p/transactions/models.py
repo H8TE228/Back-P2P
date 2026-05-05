@@ -22,6 +22,10 @@ class Transaction(models.Model):
     status = models.CharField(max_length=10, choices=Status, default=Status.PENDING)
     returned_at = models.DateTimeField(blank=True, null=True)
 
+    planned_start = models.DateTimeField()
+    planned_end = models.DateTimeField()
+
+
     def save(self, *args, **kwargs):
         if not self.owner_id:
             self.owner = self.item.owner
