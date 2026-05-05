@@ -53,7 +53,7 @@ class ItemSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='type.category.name', read_only=True)
     owner_name = serializers.CharField(source='owner.username', read_only=True)
     images = ItemImageSerializer(many=True, read_only=True)
-    availability_calendar = AvailabilityCalendarSerializer(many=True)
+    availability_calendar = AvailabilityCalendarSerializer(many=True, required=False)
 
     class Meta:
         model = Item
