@@ -199,6 +199,7 @@ class TransactionApprovalView(APIView):
     def post(self, request, pk):
         transaction = get_object_or_404(Transaction, pk=pk)
         self.check_object_permissions(request, transaction)
+        item_freed = False
 
         match transaction.status:
             case Transaction.Status.PENDING:
