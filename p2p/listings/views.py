@@ -306,16 +306,19 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
+        base_qs = ViewHistory.objects.select_related(
+            'item', 'item__owner', 'item__type', 'item__type__category',
+        ).prefetch_related('item__images')
+
         if user.is_superuser:
             user_id = self.request.query_params.get('user_id')
             if user_id:
-                return ViewHistory.objects.filter(user_id=user_id).select_related('item')
-            return ViewHistory.objects.all().select_related('item', 'user')
-        return ViewHistory.objects.filter(user=user).select_related('item')
+                return base_qs.filter(user_id=user_id)
+            return base_qs.select_related('user')
+        return base_qs.filter(user=user)
 
     def create(self, request, *args, **kwargs):
-        # дедупликация: одна пара (user, item) — одна запись
-        item_id = request.data.get('item')
+        item_id = request.data.get('item_id') or request.data.get('item')
         if not item_id:
             return Response(
                 {'item': 'Это поле обязательно.'},
@@ -325,7 +328,6 @@ class ViewHistoryViewSet(viewsets.ModelViewSet):
         view, created = ViewHistory.objects.update_or_create(
             user=request.user,
             item_id=item_id,
-            # last_viewed_at обновится автоматически через auto_now=True
         )
         serializer = self.get_serializer(view)
         return Response(
@@ -381,7 +383,9 @@ class FavoriteItemViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         return FavoriteItem.objects.filter(
             user=self.request.user
-        ).select_related('item', 'item__type', 'item__type__category', 'item__owner')
+        ).select_related(
+            'item', 'item__type', 'item__type__category', 'item__owner'
+        ).prefetch_related('item__images')
 
     def create(self, request, *args, **kwargs):
         item_id = request.data.get('item_id') or request.data.get('item')

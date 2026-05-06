@@ -168,11 +168,14 @@ class SearchHistorySerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'last_searched_at']
 
 class ViewHistorySerializer(serializers.ModelSerializer):
-    item_name = serializers.CharField(source='item.name', read_only=True)
+    item = ItemDetailSerializer(read_only=True)
+    item_id = serializers.PrimaryKeyRelatedField(
+        queryset=Item.objects.all(), source='item', write_only=True, required=False
+    )
 
     class Meta:
         model = ViewHistory
-        fields = ['id', 'item', 'item_name', 'created_at', 'last_viewed_at']
+        fields = ['id', 'item', 'item_id', 'created_at', 'last_viewed_at']
         read_only_fields = ['id', 'created_at', 'last_viewed_at']
 
 class FavoriteCategorySerializer(serializers.ModelSerializer):
