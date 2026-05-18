@@ -11,6 +11,8 @@ from .views import (
     FavoriteCategoryViewSet,
     FavoriteItemViewSet,
     NotificationViewSet,
+    SharedRentalViewSet,
+    ItemSharedRentalView,
     MyItemsView,
 )
 
@@ -26,9 +28,10 @@ router.register(r'view-history', ViewHistoryViewSet, basename='view-history')
 router.register(r'favorite-categories', FavoriteCategoryViewSet, basename='favorite-category')
 router.register(r'favorite-items', FavoriteItemViewSet, basename='favorite-item')
 router.register(r'notifications', NotificationViewSet, basename='notification')
-
+router.register(r'shared-rentals', SharedRentalViewSet, basename='shared-rental')
 
 urlpatterns = [
     path('item/my/', MyItemsView.as_view(), name='list-my-items'),
+    path('<int:item_id>/shared-rentals/', ItemSharedRentalView.as_view(), name='item-shared-rental'),
     path('', include(router.urls)),
 ]

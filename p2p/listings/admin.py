@@ -1,7 +1,8 @@
 from django.contrib import admin
 from .models import (
     Category, ItemType, Notification, FavoriteCategory, FavoriteItem, Item, ItemImage,
-    SearchHistory, ViewHistory, Review
+    SearchHistory, ViewHistory, Review,
+    SharedRental, SharedRentalSegment,
 )
 
 @admin.register(Category)
@@ -82,3 +83,27 @@ class NotificationAdmin(admin.ModelAdmin):
     readonly_fields = ('user', 'kind', 'item', 'message', 'created_at')
     list_select_related = ('user', 'item')
     raw_id_fields = ('user', 'item')
+
+
+class SharedRentalSegmentInline(admin.TabularInline):
+    model = SharedRentalSegment
+    extra = 0
+    readonly_fields = ('segment_index', 'segment_start', 'segment_end', 'participant', 'joined_at')
+    can_delete = False
+
+
+@admin.register(SharedRental)
+class SharedRentalAdmin(admin.ModelAdmin):
+    list_display = ('id', 'item', 'creator', 'status', 'slots_needed',
+                    'planned_start', 'planned_end', 'created_at')
+    list_filter = ('status', 'created_at')
+    search_fields = ('item__name', 'creator__username', 'creator__email')
+    readonly_fields = (
+        'creator', 'item', 'planned_start', 'planned_end', 'slots_needed',
+        'status', 'confirmed_received_at', 'confirmed_returned_at', 'completed_at',
+        'created_at', 'updated_at',
+    )
+    list_select_related = ('item', 'creator')
+    raw_id_fields = ('item', 'creator')
+    inlines = [SharedRentalSegmentInline]
+    ordering = ('-created_at',)

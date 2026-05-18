@@ -2,6 +2,7 @@ from rest_framework import viewsets, permissions, status, generics
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q, Avg
+from django.db import transaction as db_transaction
 from django.shortcuts import get_object_or_404
 from django_filters.rest_framework import DjangoFilterBackend
 from .filters import ItemFilter
@@ -12,15 +13,17 @@ from drf_spectacular.utils import extend_schema
 
 
 from .models import (
-    Category, ItemType, Item, ItemImage, Notification, 
+    Category, ItemType, Item, ItemImage, Notification,
     SearchHistory, ViewHistory, FavoriteCategory, FavoriteItem,
     Review,
+    SharedRental, SharedRentalSegment,
 )
 from .serializers import (
     CategorySerializer, ItemTypeSerializer, ItemSerializer, ItemImageSerializer, NotificationSerializer,
     SearchHistorySerializer, ViewHistorySerializer, FavoriteCategorySerializer,
     FavoriteItemSerializer,
-    ReviewSerializer, ItemDetailSerializer
+    ReviewSerializer, ItemDetailSerializer,
+    SharedRentalSerializer,
 )
 
 @extend_schema(
@@ -439,3 +442,397 @@ class NotificationViewSet(
     def mark_all_read(self, request):
         updated = self.get_queryset().filter(is_read=False).update(is_read=True)
         return Response({'updated': updated})
+    
+
+@extend_schema(
+    tags=["shared rentals"],
+    description="""
+        Групповая аренда (совладение).
+
+        Несколько арендаторов берут один предмет на общий период и делят его
+        на равные сегменты. Период должен делиться на количество участников нацело.
+
+        Жизненный цикл:
+        collecting → approved → active → returning → completed
+        (или → cancelled / → expired)
+
+        Эндпоинты:
+        POST   /shared-rentals/                     — создать заявку
+        GET    /shared-rentals/                     — список (фильтры: ?item=, ?status=, ?only_open=1, ?my=1)
+        GET    /shared-rentals/<id>/                — детали с сегментами
+        DELETE /shared-rentals/<id>/                — отменить (только создатель, только collecting)
+        POST   /shared-rentals/<id>/join/           — присоединиться (нужно передать segment_index)
+        POST   /shared-rentals/<id>/leave/          — выйти (только collecting, не для создателя)
+        POST   /shared-rentals/<id>/approve/        — одобрить (только владелец, только когда is_full)
+        POST   /shared-rentals/<id>/reject/         — отклонить (только владелец)
+        POST   /shared-rentals/<id>/confirm-receipt/— подтвердить получение (любой участник, approved → active)
+        POST   /shared-rentals/<id>/confirm-return/ — подтвердить возврат (любой участник, active → returning)
+        POST   /shared-rentals/<id>/finalize/       — закрыть (только владелец, returning → completed)
+        GET    /shared-rentals/my/                  — мои заявки (где я создатель или участник)
+    """
+)
+class SharedRentalViewSet(viewsets.ModelViewSet):
+    queryset = SharedRental.objects.all()
+    serializer_class = SharedRentalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']  # запрещаем PUT/PATCH
+
+    def get_queryset(self):
+        qs = SharedRental.objects.select_related(
+            'item', 'item__owner', 'item__type', 'item__type__category', 'creator'
+        ).prefetch_related(
+            'item__images', 'segments', 'segments__participant',
+        )
+
+        item_id = self.request.query_params.get('item')
+        status_param = self.request.query_params.get('status')
+        only_open = self.request.query_params.get('only_open')
+        my_flag = self.request.query_params.get('my')
+
+        if item_id:
+            qs = qs.filter(item_id=item_id)
+        if status_param:
+            qs = qs.filter(status=status_param)
+        if only_open in ('1', 'true', 'True'):
+            qs = qs.filter(status=SharedRental.Status.COLLECTING)
+        if my_flag in ('1', 'true', 'True'):
+            qs = qs.filter(
+                Q(creator=self.request.user) |
+                Q(segments__participant=self.request.user)
+            ).distinct()
+
+        return qs
+
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        instance.maybe_expire()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.creator != request.user:
+            raise PermissionDenied("Только создатель может отменить заявку")
+        if instance.status != SharedRental.Status.COLLECTING:
+            return Response(
+                {"detail": f"Отменить можно только заявку в статусе 'collecting' (сейчас '{instance.status}')"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        instance.status = SharedRental.Status.CANCELLED
+        instance.save(update_fields=['status', 'updated_at'])
+        self._notify_participants(
+            instance,
+            Notification.Kind.SHARED_RENTAL_CANCELLED,
+            f'Групповая аренда «{instance.item.name}» отменена создателем',
+            exclude_user=request.user,
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        tags=["shared rentals"],
+        summary="Заявки, требующие моего действия",
+        description="""
+            Возвращает групповые аренды, в которых я должен что-то сделать:
+            - я владелец предмета, статус 'collecting' и набралось участников → нужен approve
+            - я владелец предмета, статус 'returning' → нужен finalize
+            - я участник, статус 'approved' → нужен confirm-receipt
+            - я участник, статус 'active' → нужен confirm-return
+        """,
+    )
+    @action(detail=False, methods=['get'])
+    def pending(self, request):
+        user = request.user
+        all_segments = SharedRentalSegment.objects.filter(participant=user)
+        my_sr_ids = all_segments.values_list('shared_rental_id', flat=True)
+
+        qs = self.get_queryset()
+        # как владелец предмета: collecting+is_full ИЛИ returning
+        # как участник: approved ИЛИ active
+        owner_collecting_full_or_returning = (
+            Q(item__owner=user) &
+            (
+                Q(status=SharedRental.Status.RETURNING) |
+                # отдельно соберём collecting и потом отфильтруем по is_full в Python:
+                # фильтровать is_full на уровне БД через annotate — оверкилл для MVP
+                Q(status=SharedRental.Status.COLLECTING)
+            )
+        )
+        participant_approved_or_active = (
+            Q(id__in=my_sr_ids) &
+            Q(status__in=[SharedRental.Status.APPROVED, SharedRental.Status.ACTIVE])
+        )
+
+        qs = qs.filter(owner_collecting_full_or_returning | participant_approved_or_active)
+
+        # отфильтруем collecting-но-не-full в Python (упрощённо для MVP)
+        items = [
+            sr for sr in qs
+            if not (sr.status == SharedRental.Status.COLLECTING and not sr.is_full and sr.item.owner_id == user.id)
+        ]
+
+        page = self.paginate_queryset(items)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(items, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def my(self, request):
+        qs = self.get_queryset().filter(
+            Q(creator=request.user) |
+            Q(segments__participant=request.user)
+        ).distinct()
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def join(self, request, pk=None):
+        shared = self.get_object()
+        shared.maybe_expire()
+
+        if shared.status != SharedRental.Status.COLLECTING:
+            return Response(
+                {"detail": f"Нельзя присоединиться к заявке со статусом '{shared.status}'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if shared.item.owner == request.user:
+            return Response(
+                {"detail": "Владелец не может участвовать в аренде собственного предмета"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if shared.segments.filter(participant=request.user).exists():
+            return Response(
+                {"detail": "Вы уже участвуете в этой групповой аренде"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        segment_index = request.data.get('segment_index')
+        if segment_index is None:
+            return Response(
+                {"segment_index": "Это поле обязательно. Укажите индекс свободного сегмента."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            segment_index = int(segment_index)
+        except (TypeError, ValueError):
+            return Response({"segment_index": "Должно быть целым числом"}, status=status.HTTP_400_BAD_REQUEST)
+
+        with db_transaction.atomic():
+            try:
+                segment = shared.segments.select_for_update().get(segment_index=segment_index)
+            except SharedRentalSegment.DoesNotExist:
+                return Response({"detail": "Сегмент с таким индексом не найден"}, status=status.HTTP_404_NOT_FOUND)
+
+            if segment.participant_id is not None:
+                return Response(
+                    {"detail": "Этот сегмент уже занят"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            from django.utils import timezone
+            segment.participant = request.user
+            segment.joined_at = timezone.now()
+            segment.save()
+
+        Notification.objects.create(
+            user=shared.creator,
+            kind=Notification.Kind.SHARED_RENTAL_JOINED,
+            item=shared.item,
+            message=f'{request.user.username} присоединился к вашей групповой аренде «{shared.item.name}»',
+        )
+
+        return Response(self.get_serializer(shared).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def leave(self, request, pk=None):
+        shared = self.get_object()
+        if shared.status != SharedRental.Status.COLLECTING:
+            return Response(
+                {"detail": f"Нельзя выйти из заявки со статусом '{shared.status}'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if shared.creator == request.user:
+            return Response(
+                {"detail": "Создатель не может выйти из заявки. Чтобы прекратить, отмените её (DELETE)."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        segment = shared.segments.filter(participant=request.user).first()
+        if not segment:
+            return Response(
+                {"detail": "Вы не участвуете в этой групповой аренде"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        segment.participant = None
+        segment.joined_at = None
+        segment.save()
+        return Response(self.get_serializer(shared).data)
+
+    @action(detail=True, methods=['post'])
+    def approve(self, request, pk=None):
+        shared = self.get_object()
+        if shared.item.owner != request.user:
+            raise PermissionDenied("Только владелец предмета может одобрить групповую аренду")
+        if shared.status != SharedRental.Status.COLLECTING:
+            return Response(
+                {"detail": f"Одобрить можно только заявку в статусе 'collecting' (сейчас '{shared.status}')"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not shared.is_full:
+            return Response(
+                {"detail": f"Все сегменты должны быть заняты ({shared.participants_count}/{shared.slots_needed})"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            with db_transaction.atomic():
+                shared.item.add_to_calendar(
+                    user_id=shared.creator.pk,
+                    start=shared.planned_start,
+                    end=shared.planned_end,
+                )
+                shared.status = SharedRental.Status.APPROVED
+                shared.save(update_fields=['status', 'updated_at'])
+        except Exception as e:
+            return Response({"detail": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        self._notify_participants(
+            shared,
+            Notification.Kind.SHARED_RENTAL_APPROVED,
+            f'Владелец одобрил групповую аренду «{shared.item.name}»',
+        )
+        return Response(self.get_serializer(shared).data)
+
+    @action(detail=True, methods=['post'])
+    def reject(self, request, pk=None):
+        shared = self.get_object()
+        if shared.item.owner != request.user:
+            raise PermissionDenied("Только владелец предмета может отклонить групповую аренду")
+        if shared.status != SharedRental.Status.COLLECTING:
+            return Response(
+                {"detail": "Отклонить можно только заявку в статусе 'collecting'"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        shared.status = SharedRental.Status.CANCELLED
+        shared.save(update_fields=['status', 'updated_at'])
+        self._notify_participants(
+            shared,
+            Notification.Kind.SHARED_RENTAL_REJECTED,
+            f'Владелец отклонил групповую аренду «{shared.item.name}»',
+        )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @action(detail=True, methods=['post'], url_path='confirm-receipt')
+    def confirm_receipt(self, request, pk=None):
+        shared = self.get_object()
+        if not shared.segments.filter(participant=request.user).exists():
+            raise PermissionDenied("Только участник группы может подтвердить получение")
+        if shared.status != SharedRental.Status.APPROVED:
+            return Response(
+                {"detail": f"Получение можно подтвердить только в статусе 'approved' (сейчас '{shared.status}')"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.utils import timezone
+        shared.status = SharedRental.Status.ACTIVE
+        shared.confirmed_received_at = timezone.now()
+        shared.save(update_fields=['status', 'confirmed_received_at', 'updated_at'])
+        return Response(self.get_serializer(shared).data)
+
+    @action(detail=True, methods=['post'], url_path='confirm-return')
+    def confirm_return(self, request, pk=None):
+        shared = self.get_object()
+        if not shared.segments.filter(participant=request.user).exists():
+            raise PermissionDenied("Только участник группы может подтвердить возврат")
+        if shared.status != SharedRental.Status.ACTIVE:
+            return Response(
+                {"detail": f"Возврат можно подтвердить только в статусе 'active' (сейчас '{shared.status}')"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.utils import timezone
+        shared.status = SharedRental.Status.RETURNING
+        shared.confirmed_returned_at = timezone.now()
+        shared.save(update_fields=['status', 'confirmed_returned_at', 'updated_at'])
+        return Response(self.get_serializer(shared).data)
+
+    @action(detail=True, methods=['post'])
+    def finalize(self, request, pk=None):
+        shared = self.get_object()
+        if shared.item.owner != request.user:
+            raise PermissionDenied("Только владелец предмета может завершить аренду")
+        if shared.status != SharedRental.Status.RETURNING:
+            return Response(
+                {"detail": f"Завершить можно только в статусе 'returning' (сейчас '{shared.status}')"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from django.utils import timezone
+        shared.status = SharedRental.Status.COMPLETED
+        shared.completed_at = timezone.now()
+        shared.save(update_fields=['status', 'completed_at', 'updated_at'])
+        self._notify_favoriters(shared.item)
+        return Response(self.get_serializer(shared).data)
+
+    # хелперы
+    @staticmethod
+    def _notify_participants(shared, kind, message, exclude_user=None):
+        qs = SharedRentalSegment.objects.filter(
+            shared_rental=shared,
+            participant__isnull=False,
+        )
+        if exclude_user:
+            qs = qs.exclude(participant=exclude_user)
+        user_ids = qs.values_list('participant_id', flat=True).distinct()
+        notifications = [
+            Notification(user_id=uid, kind=kind, item=shared.item, message=message)
+            for uid in user_ids
+        ]
+        if notifications:
+            Notification.objects.bulk_create(notifications)
+
+    @staticmethod
+    def _notify_favoriters(item):
+        favoriters = FavoriteItem.objects.filter(item=item).select_related('user')
+        notifications = [
+            Notification(
+                user=fav.user,
+                kind=Notification.Kind.FAVORITE_ITEM_AVAILABLE,
+                item=item,
+                message=f'Предмет «{item.name}» снова доступен для аренды',
+            )
+            for fav in favoriters
+        ]
+        if notifications:
+            Notification.objects.bulk_create(notifications)
+
+
+@extend_schema(
+    tags=["shared rentals"],
+    summary="Создать групповую аренду для конкретного предмета",
+    description="""
+        Удобная ручка для создания заявки на групповую аренду через URL предмета —
+        симметрично с обычной арендой POST /listings/<item_id>/transactions/.
+        В body НЕ нужно передавать `item` — он берётся из URL.
+
+        Поля в body:
+        - planned_start (ISO datetime)
+        - planned_end   (ISO datetime)
+        - slots_needed  (int >= 2)
+        - creator_segment_index (int, 0..slots_needed-1)
+    """,
+)
+class ItemSharedRentalView(generics.CreateAPIView):
+    serializer_class = SharedRentalSerializer
+    permission_classes = [permissions.IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        item_id = self.kwargs['item_id']
+        # подмешиваем item в данные перед валидацией
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        data['item'] = item_id
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

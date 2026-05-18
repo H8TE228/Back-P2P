@@ -214,6 +214,10 @@ class Notification(models.Model):
     """
     class Kind(models.TextChoices):
         FAVORITE_ITEM_AVAILABLE = "favorite_available", "Избранный предмет освободился"
+        SHARED_RENTAL_JOINED = "shared_rental_joined", "Участник присоединился к вашей групповой аренде"
+        SHARED_RENTAL_APPROVED = "shared_rental_approved", "Групповая аренда одобрена владельцем"
+        SHARED_RENTAL_REJECTED = "shared_rental_rejected", "Групповая аренда отклонена владельцем"
+        SHARED_RENTAL_CANCELLED = "shared_rental_cancelled", "Групповая аренда отменена создателем"
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='notifications')
     kind = models.CharField(max_length=32, choices=Kind.choices)
@@ -232,3 +236,86 @@ class Notification(models.Model):
         verbose_name = "Уведомление"
         verbose_name_plural = "Уведомления"
         ordering = ['-created_at']
+
+
+class SharedRental(models.Model):
+    """
+    Групповая аренда (совладение): несколько арендаторов берут один предмет
+    на общий период и делят его на равные сегменты по числу участников.
+    """
+    class Status(models.TextChoices):
+        COLLECTING = "collecting", "Сбор участников"
+        APPROVED = "approved", "Одобрено владельцем"
+        ACTIVE = "active", "В использовании"
+        RETURNING = "returning", "В процессе возврата"
+        COMPLETED = "completed", "Завершено"
+        CANCELLED = "cancelled", "Отменено"
+        EXPIRED = "expired", "Истёк срок сбора"
+
+    item = models.ForeignKey(Item, on_delete=models.CASCADE, related_name='shared_rentals')
+    creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_shared_rentals')
+    planned_start = models.DateTimeField()
+    planned_end = models.DateTimeField()
+    slots_needed = models.PositiveIntegerField(validators=[MinValueValidator(2)])
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.COLLECTING)
+
+    confirmed_received_at = models.DateTimeField(null=True, blank=True)
+    confirmed_returned_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"SharedRental #{self.id} on {self.item.name} ({self.status})"
+
+    class Meta:
+        verbose_name = "Групповая аренда"
+        verbose_name_plural = "Групповые аренды"
+        ordering = ['-created_at']
+
+    @property
+    def participants_count(self):
+        return self.segments.filter(participant__isnull=False).count()
+
+    @property
+    def is_full(self):
+        return self.participants_count >= self.slots_needed
+
+    def maybe_expire(self):
+        """Помечает заявку expired, если planned_start в прошлом и она ещё collecting."""
+        from django.utils import timezone
+        if self.status == self.Status.COLLECTING and self.planned_start < timezone.now():
+            self.status = self.Status.EXPIRED
+            self.save(update_fields=['status', 'updated_at'])
+            return True
+        return False
+
+
+class SharedRentalSegment(models.Model):
+    """
+    Один временной сегмент внутри SharedRental. Привязан к одному участнику.
+    Создаётся пачкой при создании SharedRental, изначально без participant.
+    """
+    shared_rental = models.ForeignKey(SharedRental, on_delete=models.CASCADE, related_name='segments')
+    segment_index = models.PositiveIntegerField()
+    segment_start = models.DateTimeField()
+    segment_end = models.DateTimeField()
+    participant = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='shared_rental_segments',
+    )
+    joined_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        who = self.participant.username if self.participant else "<свободен>"
+        return f"Segment #{self.segment_index} of SharedRental #{self.shared_rental_id} ({who})"
+
+    class Meta:
+        verbose_name = "Сегмент групповой аренды"
+        verbose_name_plural = "Сегменты групповых аренд"
+        ordering = ['shared_rental', 'segment_index']
+        unique_together = [
+            ['shared_rental', 'segment_index'],
+            ['shared_rental', 'participant'],
+        ]
