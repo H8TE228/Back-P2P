@@ -26,12 +26,14 @@ class CategorySerializer(serializers.ModelSerializer):
 
 class ItemTypeSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
+    related_types = CategoryTypeSerializer(many=True, read_only=True)
 
     class Meta:
         model = ItemType
         fields = [
-            'id', 'category', 'category_name', 'name', 'usage_tips', 
+            'id', 'category', 'category_name', 'name', 'usage_tips',
             'safety_rules', 'inspection_checklist', 'characteristics_template',
+            'related_types',
             'created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']

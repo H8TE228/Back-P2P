@@ -465,3 +465,130 @@ class SharedRentalPendingTests(TestCase):
         r = auth_client(stranger).get('/api/v1/listings/shared-rentals/pending/')
         ids = [x['id'] for x in r.data.get('results', r.data)]
         self.assertEqual(ids, [])
+
+
+# ============================================================
+# Recommendations
+# ============================================================
+
+class RecommendationsTests(TestCase):
+    def setUp(self):
+        self.owner1 = make_user('owner_r1@x.com')
+        self.owner2 = make_user('owner_r2@x.com')
+        self.viewer = make_user('viewer_r@x.com')
+
+        cat, _ = Category.objects.get_or_create(name='Походное')
+        self.type_tent = ItemType.objects.create(category=cat, name='Палатка')
+        self.type_bag = ItemType.objects.create(category=cat, name='Спальник')
+        self.type_lamp = ItemType.objects.create(category=cat, name='Фонарь')
+        # палатка <-> спальник (симметрично)
+        self.type_tent.related_types.add(self.type_bag)
+
+        self.tent_a = Item.objects.create(
+            owner=self.owner1, type=self.type_tent,
+            name='Палатка 2-местная', description='—',
+            price=Decimal('500.00'),
+        )
+        self.tent_b = Item.objects.create(
+            owner=self.owner2, type=self.type_tent,
+            name='Палатка 4-местная', description='—',
+            price=Decimal('900.00'),
+        )
+        self.bag_a = Item.objects.create(
+            owner=self.owner2, type=self.type_bag,
+            name='Спальник зимний', description='—',
+            price=Decimal('200.00'),
+        )
+        self.lamp_a = Item.objects.create(
+            owner=self.owner2, type=self.type_lamp,
+            name='Налобный фонарь', description='—',
+            price=Decimal('100.00'),
+        )
+
+    def test_recommendations_returns_related_types(self):
+        c = auth_client(self.viewer)
+        r = c.get(f'/api/v1/listings/item/{self.tent_a.id}/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        names = [x['name'] for x in r.data]
+        # спальник в списке (связанный), фонарь — нет (не связан)
+        self.assertIn('Спальник зимний', names)
+        self.assertNotIn('Налобный фонарь', names)
+        # сама палатка тоже не в рекомендациях своему типу
+        self.assertNotIn('Палатка 2-местная', names)
+
+    def test_recommendations_symmetric(self):
+        """Если палатка связана со спальником, то и от спальника видна палатка."""
+        c = auth_client(self.viewer)
+        r = c.get(f'/api/v1/listings/item/{self.bag_a.id}/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        names = [x['name'] for x in r.data]
+        # обе палатки связаны со спальником
+        self.assertIn('Палатка 2-местная', names)
+        self.assertIn('Палатка 4-местная', names)
+
+    def test_recommendations_empty_when_no_related(self):
+        c = auth_client(self.viewer)
+        # у фонаря нет связанных типов
+        r = c.get(f'/api/v1/listings/item/{self.lamp_a.id}/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertEqual(r.data, [])
+
+    def test_similar_returns_same_type(self):
+        c = auth_client(self.viewer)
+        r = c.get(f'/api/v1/listings/item/{self.tent_a.id}/similar/')
+        self.assertEqual(r.status_code, 200, r.content)
+        names = [x['name'] for x in r.data]
+        # другая палатка должна быть, своя — нет
+        self.assertIn('Палатка 4-местная', names)
+        self.assertNotIn('Палатка 2-местная', names)
+        # спальник не должен попасть
+        self.assertNotIn('Спальник зимний', names)
+
+    def test_similar_excludes_own_items_for_authed_user(self):
+        # smith видит палатку tent_a от owner1; своих палаток у него нет — ничего не теряем,
+        # проверим зеркальный кейс: owner1 запрашивает похожие к своей палатке tent_a
+        c = auth_client(self.owner1)
+        r = c.get(f'/api/v1/listings/item/{self.tent_a.id}/similar/')
+        self.assertEqual(r.status_code, 200, r.content)
+        names = [x['name'] for x in r.data]
+        # tent_b принадлежит owner2 → видна
+        self.assertIn('Палатка 4-местная', names)
+
+    def test_personal_recommendations_uses_view_history(self):
+        # viewer посмотрел палатку — должны рекомендовать спальники
+        from .models import ViewHistory
+        ViewHistory.objects.create(user=self.viewer, item=self.tent_a)
+
+        c = auth_client(self.viewer)
+        r = c.get('/api/v1/listings/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        results = r.data.get('results', r.data)
+        names = [x['name'] for x in results]
+        # должен быть спальник (related к палатке)
+        self.assertIn('Спальник зимний', names)
+        # уже просмотренное (tent_a) исключено
+        self.assertNotIn('Палатка 2-местная', names)
+        # своих предметов нет, проверять нечего
+
+    def test_personal_recommendations_fallback_when_no_history(self):
+        # у viewer пусто в истории — должен прийти fallback из всех available
+        c = auth_client(self.viewer)
+        r = c.get('/api/v1/listings/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        results = r.data.get('results', r.data)
+        # все 4 предмета должны попасть (никто не свой для viewer'а)
+        self.assertEqual(len(results), 4)
+
+    def test_personal_recommendations_excludes_own(self):
+        # owner1 запрашивает feed — своих предметов в выдаче быть не должно
+        c = auth_client(self.owner1)
+        r = c.get('/api/v1/listings/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        results = r.data.get('results', r.data)
+        owner_ids = {x['owner']['id'] if isinstance(x['owner'], dict) else x['owner'] for x in results}
+        self.assertNotIn(self.owner1.id, owner_ids)
+
+    def test_personal_recommendations_requires_auth(self):
+        client = APIClient()
+        r = client.get('/api/v1/listings/recommendations/')
+        self.assertEqual(r.status_code, 401)

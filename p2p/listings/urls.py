@@ -13,6 +13,7 @@ from .views import (
     NotificationViewSet,
     SharedRentalViewSet,
     ItemSharedRentalView,
+    PersonalRecommendationsView,
     MyItemsView,
 )
 
@@ -32,6 +33,7 @@ router.register(r'shared-rentals', SharedRentalViewSet, basename='shared-rental'
 
 urlpatterns = [
     path('item/my/', MyItemsView.as_view(), name='list-my-items'),
+    path('recommendations/', PersonalRecommendationsView.as_view(), name='personal-recommendations'),
     path('<int:item_id>/shared-rentals/', ItemSharedRentalView.as_view(), name='item-shared-rental'),
     path('', include(router.urls)),
 ]

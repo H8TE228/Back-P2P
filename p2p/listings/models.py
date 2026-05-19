@@ -28,6 +28,14 @@ class ItemType(models.Model):
     inspection_checklist = models.JSONField(default=dict, blank=True)
     characteristics_template = models.JSONField(default=dict, blank=True)
     
+    related_types = models.ManyToManyField(
+        'self',
+        symmetrical=True,
+        blank=True,
+        help_text="Связанные типы — для рекомендаций сопутствующих товаров. "
+                  "Например, к палатке свяжите спальник, горелку, фонарь.",
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

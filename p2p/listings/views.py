@@ -138,6 +138,62 @@ class ItemViewSet(viewsets.ModelViewSet):
             # не валим запрос из-за проблем с историей поиска
             pass
         return response
+    
+
+    @extend_schema(
+        tags=["recommendations"],
+        summary="Сопутствующие товары",
+        description="""
+            Возвращает товары типов, связанных с типом текущего предмета через
+            ItemType.related_types. Например, к палатке вернёт спальники и горелки,
+            если в админке настроены такие связи.
+
+            Возвращает до 20 элементов, только со статусом available.
+        """,
+    )
+    @action(detail=True, methods=['get'])
+    def recommendations(self, request, pk=None):
+        item = self.get_object()
+        related_type_ids = list(item.type.related_types.values_list('id', flat=True))
+        if not related_type_ids:
+            return Response([])
+
+        qs = Item.objects.filter(
+            type_id__in=related_type_ids,
+            status='available',
+        ).exclude(pk=item.pk).select_related(
+            'owner', 'type', 'type__category',
+        ).prefetch_related('images').order_by('-created_at')[:20]
+
+        serializer = ItemDetailSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+    @extend_schema(
+        tags=["recommendations"],
+        summary="Похожие товары",
+        description="""
+            Возвращает товары того же типа, что и текущий, исключая сам товар
+            и (если запрашивает залогиненный пользователь) товары этого же пользователя.
+            Возвращает до 20 элементов, только со статусом available.
+        """,
+    )
+    @action(detail=True, methods=['get'])
+    def similar(self, request, pk=None):
+        item = self.get_object()
+        qs = Item.objects.filter(
+            type_id=item.type_id,
+            status='available',
+        ).exclude(pk=item.pk)
+
+        if request.user.is_authenticated:
+            qs = qs.exclude(owner=request.user)
+
+        qs = qs.select_related(
+            'owner', 'type', 'type__category',
+        ).prefetch_related('images').order_by('-created_at')[:20]
+
+        serializer = ItemDetailSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
 
 
 class ItemImageViewSet(viewsets.ModelViewSet):
@@ -836,3 +892,62 @@ class ItemSharedRentalView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+    
+
+@extend_schema(
+    tags=["recommendations"],
+    summary="Персональные рекомендации",
+    description="""
+        Возвращает рекомендации для текущего пользователя на основе истории просмотров.
+
+        Алгоритм:
+        1. Берём топ-5 типов предметов из ViewHistory пользователя.
+        2. К ним добавляем все related_types (сопутствующие).
+        3. Из items этих типов оставляем только available.
+        4. Исключаем свои предметы и уже просмотренные.
+        5. Сортировка: новые сверху, лимит 20.
+
+        Если истории просмотров нет — возвращает 20 свежих available items
+        (исключая свои), как fallback.
+    """,
+)
+class PersonalRecommendationsView(generics.ListAPIView):
+    serializer_class = ItemDetailSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    queryset = Item.objects.none()
+
+    def get_queryset(self):
+        user = self.request.user
+
+        # топ типов из истории просмотров
+        viewed_type_ids = list(
+            ViewHistory.objects.filter(user=user)
+            .values_list('item__type_id', flat=True)
+            .distinct()[:5]
+        )
+
+        base_qs = Item.objects.filter(status='available').exclude(owner=user)
+
+        if not viewed_type_ids:
+            # fallback для пользователей без истории
+            return base_qs.select_related(
+                'owner', 'type', 'type__category',
+            ).prefetch_related('images').order_by('-created_at')
+
+        # собираем все связанные типы
+        all_type_ids = set(viewed_type_ids)
+        related = ItemType.objects.filter(
+            id__in=viewed_type_ids,
+        ).values_list('related_types__id', flat=True)
+        all_type_ids.update(t_id for t_id in related if t_id is not None)
+
+        # исключаем уже просмотренные предметы
+        viewed_item_ids = ViewHistory.objects.filter(user=user).values_list('item_id', flat=True)
+
+        return base_qs.filter(
+            type_id__in=all_type_ids,
+        ).exclude(
+            id__in=viewed_item_ids,
+        ).select_related(
+            'owner', 'type', 'type__category',
+        ).prefetch_related('images').order_by('-created_at')

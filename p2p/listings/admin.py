@@ -12,9 +12,14 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(ItemType)
 class ItemTypeAdmin(admin.ModelAdmin):
-    list_display = ('id', 'name', 'category', 'created_at')
+    list_display = ('id', 'name', 'category', 'related_types_count', 'created_at')
     list_filter = ('category',)
     search_fields = ('name',)
+    filter_horizontal = ('related_types',)
+
+    def related_types_count(self, obj):
+        return obj.related_types.count()
+    related_types_count.short_description = 'Связанных типов'
 
 @admin.register(FavoriteCategory)
 class FavoriteCategoryAdmin(admin.ModelAdmin):
