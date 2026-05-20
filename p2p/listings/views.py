@@ -465,6 +465,48 @@ class FavoriteItemViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
     
+    @extend_schema(
+        tags=["favorite items"],
+        summary="Добавить/удалить избранное по id товара",
+        description="""
+            Управление избранным по `item_id`, а не по `favorite.id` — удобно,
+            когда фронт знает только id товара (например, на странице товара).
+
+            POST   /favorite-items/by-item/<item_id>/  — добавить (идемпотентно)
+            DELETE /favorite-items/by-item/<item_id>/  — удалить из избранного
+
+            Симметрично с полем Item.is_liked: фронт по одной кнопке делает toggle.
+        """,
+    )
+    @action(
+        detail=False,
+        methods=['post', 'delete'],
+        url_path='by-item/(?P<item_id>[0-9]+)',
+    )
+    def by_item(self, request, item_id=None):
+        if request.method == 'POST':
+            item = get_object_or_404(Item, pk=item_id)
+            favorite, created = FavoriteItem.objects.get_or_create(
+                user=request.user,
+                item=item,
+            )
+            serializer = self.get_serializer(favorite)
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+            )
+
+        # DELETE
+        deleted, _ = FavoriteItem.objects.filter(
+            user=request.user, item_id=item_id,
+        ).delete()
+        if deleted == 0:
+            return Response(
+                {"detail": "Этого предмета нет в вашем избранном"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    
 
 @extend_schema(
     tags=["notifications"],

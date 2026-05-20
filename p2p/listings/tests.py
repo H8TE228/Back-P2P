@@ -640,3 +640,83 @@ class IsLikedFieldTests(TestCase):
         by_id = {x['id']: x for x in results}
         self.assertTrue(by_id[self.item.id]['is_liked'])
         self.assertFalse(by_id[other_item.id]['is_liked'])
+
+
+# ============================================================
+# FavoriteItem — by-item endpoint
+# ============================================================
+
+class FavoriteItemByItemTests(TestCase):
+    def setUp(self):
+        self.owner = make_user('owner_fbi@x.com')
+        self.user = make_user('user_fbi@x.com')
+        self.item = make_item(self.owner, name='Тестовый товар')
+        self.url = f'/api/v1/listings/favorite-items/by-item/{self.item.id}/'
+
+    def test_post_creates_favorite(self):
+        c = auth_client(self.user)
+        r = c.post(self.url)
+        self.assertEqual(r.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(
+            FavoriteItem.objects.filter(user=self.user, item=self.item).exists()
+        )
+
+    def test_post_idempotent(self):
+        c = auth_client(self.user)
+        r1 = c.post(self.url)
+        r2 = c.post(self.url)
+        self.assertEqual(r1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(r2.status_code, status.HTTP_200_OK)
+        # дубля нет
+        self.assertEqual(
+            FavoriteItem.objects.filter(user=self.user, item=self.item).count(),
+            1,
+        )
+
+    def test_delete_removes_favorite(self):
+        FavoriteItem.objects.create(user=self.user, item=self.item)
+        c = auth_client(self.user)
+        r = c.delete(self.url)
+        self.assertEqual(r.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(
+            FavoriteItem.objects.filter(user=self.user, item=self.item).exists()
+        )
+
+    def test_delete_when_not_favorite_returns_404(self):
+        c = auth_client(self.user)
+        r = c.delete(self.url)
+        self.assertEqual(r.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_delete_only_own_favorite(self):
+        # other user добавил в избранное
+        other = make_user('other_fbi@x.com')
+        FavoriteItem.objects.create(user=other, item=self.item)
+        # user пытается удалить — у user'а этого товара в избранном нет
+        c = auth_client(self.user)
+        r = c.delete(self.url)
+        self.assertEqual(r.status_code, status.HTTP_404_NOT_FOUND)
+        # запись other остаётся
+        self.assertTrue(
+            FavoriteItem.objects.filter(user=other, item=self.item).exists()
+        )
+
+    def test_requires_auth(self):
+        client = APIClient()
+        r1 = client.post(self.url)
+        r2 = client.delete(self.url)
+        self.assertEqual(r1.status_code, 401)
+        self.assertEqual(r2.status_code, 401)
+
+    def test_is_liked_reflects_change(self):
+        c = auth_client(self.user)
+        # сначала не лайкнут
+        r = c.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertFalse(r.data['is_liked'])
+        # POST → лайкнут
+        c.post(self.url)
+        r = c.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertTrue(r.data['is_liked'])
+        # DELETE → снова не лайкнут
+        c.delete(self.url)
+        r = c.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertFalse(r.data['is_liked'])
