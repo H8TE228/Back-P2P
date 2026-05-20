@@ -909,17 +909,18 @@ class ItemSharedRentalView(generics.CreateAPIView):
 
         Если истории просмотров нет — возвращает 20 свежих available items
         (исключая свои), как fallback.
+
+        Формат ответа — массив, не пагинированный объект (для совместимости с
+        /item/<id>/recommendations/ и /item/<id>/similar/).
     """,
 )
-class PersonalRecommendationsView(generics.ListAPIView):
+class PersonalRecommendationsView(generics.GenericAPIView):
     serializer_class = ItemDetailSerializer
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Item.objects.none()
 
-    def get_queryset(self):
-        user = self.request.user
+    def get(self, request):
+        user = request.user
 
-        # топ типов из истории просмотров
         viewed_type_ids = list(
             ViewHistory.objects.filter(user=user)
             .values_list('item__type_id', flat=True)
@@ -929,25 +930,25 @@ class PersonalRecommendationsView(generics.ListAPIView):
         base_qs = Item.objects.filter(status='available').exclude(owner=user)
 
         if not viewed_type_ids:
-            # fallback для пользователей без истории
-            return base_qs.select_related(
+            qs = base_qs.select_related(
                 'owner', 'type', 'type__category',
-            ).prefetch_related('images').order_by('-created_at')
+            ).prefetch_related('images').order_by('-created_at')[:20]
+        else:
+            all_type_ids = set(viewed_type_ids)
+            related = ItemType.objects.filter(
+                id__in=viewed_type_ids,
+            ).values_list('related_types__id', flat=True)
+            all_type_ids.update(t_id for t_id in related if t_id is not None)
 
-        # собираем все связанные типы
-        all_type_ids = set(viewed_type_ids)
-        related = ItemType.objects.filter(
-            id__in=viewed_type_ids,
-        ).values_list('related_types__id', flat=True)
-        all_type_ids.update(t_id for t_id in related if t_id is not None)
+            viewed_item_ids = ViewHistory.objects.filter(user=user).values_list('item_id', flat=True)
 
-        # исключаем уже просмотренные предметы
-        viewed_item_ids = ViewHistory.objects.filter(user=user).values_list('item_id', flat=True)
+            qs = base_qs.filter(
+                type_id__in=all_type_ids,
+            ).exclude(
+                id__in=viewed_item_ids,
+            ).select_related(
+                'owner', 'type', 'type__category',
+            ).prefetch_related('images').order_by('-created_at')[:20]
 
-        return base_qs.filter(
-            type_id__in=all_type_ids,
-        ).exclude(
-            id__in=viewed_item_ids,
-        ).select_related(
-            'owner', 'type', 'type__category',
-        ).prefetch_related('images').order_by('-created_at')
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)

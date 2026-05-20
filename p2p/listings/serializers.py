@@ -61,12 +61,13 @@ class ItemSerializer(serializers.ModelSerializer):
     images = ItemImageSerializer(many=True, read_only=True)
     availability_calendar = AvailabilityCalendarSerializer(many=True, required=False)
     effective_status = serializers.SerializerMethodField()
+    is_liked = serializers.SerializerMethodField()
 
     class Meta:
         model = Item
         fields = [
             'id', 'type', 'type_name', 'category_name', 'owner', 'owner_name',
-            'name', 'description', 'characteristics', 'status', 'effective_status', 'price',
+            'name', 'description', 'characteristics', 'status', 'effective_status', 'is_liked', 'price',
             'images', 'created_at', 'updated_at',
             'delivery_method', 'max_active_transactions',
             'availability_calendar',
@@ -106,6 +107,25 @@ class ItemSerializer(serializers.ModelSerializer):
         if obj.shared_rentals.filter(status__in=active_states).exists():
             return 'rented'
         return obj.status
+    
+    def get_is_liked(self, obj):
+        """
+        Лайкнут ли товар текущим пользователем (есть ли FavoriteItem).
+        Для анонимных всегда False.
+
+        Кэшируем множество liked-item-id в context, чтобы при сериализации
+        списка (many=True) не делать N+1 запросов. Один запрос вместо N.
+        """
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return False
+
+        if '_liked_ids' not in self.context:
+            self.context['_liked_ids'] = set(
+                FavoriteItem.objects.filter(user=request.user)
+                .values_list('item_id', flat=True)
+            )
+        return obj.id in self.context['_liked_ids']
     
     def validate_availability_calendar(self, value):
         sorted_dates = sorted(value, key=lambda x: x['start'])

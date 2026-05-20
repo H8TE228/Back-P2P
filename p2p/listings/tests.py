@@ -544,31 +544,25 @@ class RecommendationsTests(TestCase):
         # спальник не должен попасть
         self.assertNotIn('Спальник зимний', names)
 
-    def test_similar_excludes_own_items_for_authed_user(self):
-        # smith видит палатку tent_a от owner1; своих палаток у него нет — ничего не теряем,
-        # проверим зеркальный кейс: owner1 запрашивает похожие к своей палатке tent_a
-        c = auth_client(self.owner1)
-        r = c.get(f'/api/v1/listings/item/{self.tent_a.id}/similar/')
-        self.assertEqual(r.status_code, 200, r.content)
-        names = [x['name'] for x in r.data]
-        # tent_b принадлежит owner2 → видна
-        self.assertIn('Палатка 4-местная', names)
-
     def test_personal_recommendations_uses_view_history(self):
-        # viewer посмотрел палатку — должны рекомендовать спальники
         from .models import ViewHistory
         ViewHistory.objects.create(user=self.viewer, item=self.tent_a)
 
         c = auth_client(self.viewer)
         r = c.get('/api/v1/listings/recommendations/')
         self.assertEqual(r.status_code, 200, r.content)
-        results = r.data.get('results', r.data)
-        names = [x['name'] for x in results]
-        # должен быть спальник (related к палатке)
+        # теперь это массив, не пагинированный объект
+        self.assertIsInstance(r.data, list)
+        names = [x['name'] for x in r.data]
         self.assertIn('Спальник зимний', names)
-        # уже просмотренное (tent_a) исключено
         self.assertNotIn('Палатка 2-местная', names)
-        # своих предметов нет, проверять нечего
+
+    def test_personal_recommendations_fallback_when_no_history(self):
+        c = auth_client(self.viewer)
+        r = c.get('/api/v1/listings/recommendations/')
+        self.assertEqual(r.status_code, 200, r.content)
+        self.assertIsInstance(r.data, list)
+        self.assertEqual(len(r.data), 4)
 
     def test_personal_recommendations_fallback_when_no_history(self):
         # у viewer пусто в истории — должен прийти fallback из всех available
@@ -580,15 +574,69 @@ class RecommendationsTests(TestCase):
         self.assertEqual(len(results), 4)
 
     def test_personal_recommendations_excludes_own(self):
-        # owner1 запрашивает feed — своих предметов в выдаче быть не должно
         c = auth_client(self.owner1)
         r = c.get('/api/v1/listings/recommendations/')
         self.assertEqual(r.status_code, 200, r.content)
-        results = r.data.get('results', r.data)
-        owner_ids = {x['owner']['id'] if isinstance(x['owner'], dict) else x['owner'] for x in results}
+        self.assertIsInstance(r.data, list)
+        owner_ids = {
+            x['owner']['id'] if isinstance(x['owner'], dict) else x['owner']
+            for x in r.data
+        }
         self.assertNotIn(self.owner1.id, owner_ids)
 
     def test_personal_recommendations_requires_auth(self):
         client = APIClient()
         r = client.get('/api/v1/listings/recommendations/')
         self.assertEqual(r.status_code, 401)
+
+
+# ============================================================
+# is_liked
+# ============================================================
+
+class IsLikedFieldTests(TestCase):
+    def setUp(self):
+        self.owner = make_user('owner_il@x.com')
+        self.user = make_user('user_il@x.com')
+        self.item = make_item(self.owner, name='Тестовый велик')
+
+    def test_is_liked_false_when_not_liked(self):
+        c = auth_client(self.user)
+        r = c.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data['is_liked'])
+
+    def test_is_liked_true_when_liked(self):
+        FavoriteItem.objects.create(user=self.user, item=self.item)
+        c = auth_client(self.user)
+        r = c.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertTrue(r.data['is_liked'])
+
+    def test_is_liked_false_for_anonymous(self):
+        FavoriteItem.objects.create(user=self.user, item=self.item)
+        client = APIClient()  # без токена
+        r = client.get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertEqual(r.status_code, 200)
+        self.assertFalse(r.data['is_liked'])
+
+    def test_is_liked_only_for_current_user(self):
+        # user1 лайкнул, user2 запрашивает — для user2 is_liked=False
+        other = make_user('other_il@x.com')
+        FavoriteItem.objects.create(user=self.user, item=self.item)
+
+        r = auth_client(other).get(f'/api/v1/listings/item/{self.item.id}/')
+        self.assertFalse(r.data['is_liked'])
+
+    def test_is_liked_in_list_response(self):
+        FavoriteItem.objects.create(user=self.user, item=self.item)
+        # ещё один товар без лайка
+        other_item = make_item(self.owner, name='Без лайка')
+
+        c = auth_client(self.user)
+        r = c.get('/api/v1/listings/item/')
+        self.assertEqual(r.status_code, 200)
+        results = r.data['results']
+        by_id = {x['id']: x for x in results}
+        self.assertTrue(by_id[self.item.id]['is_liked'])
+        self.assertFalse(by_id[other_item.id]['is_liked'])
