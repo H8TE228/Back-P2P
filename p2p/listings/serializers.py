@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 from .models import (
     Category, ItemType, Item, ItemImage, Notification,
     SearchHistory, ViewHistory, FavoriteCategory, FavoriteItem, Review,
@@ -94,7 +95,8 @@ class ItemSerializer(serializers.ModelSerializer):
                 ItemImage.objects.create(item=instance, **image_data)
         
         return instance
-    
+
+    @extend_schema_field(serializers.CharField())
     def get_effective_status(self, obj):
         """
         Вычисляемый статус: 'rented', если у предмета сейчас есть активная
@@ -108,6 +110,7 @@ class ItemSerializer(serializers.ModelSerializer):
             return 'rented'
         return obj.status
     
+    @extend_schema_field(serializers.BooleanField())
     def get_is_liked(self, obj):
         """
         Лайкнут ли товар текущим пользователем (есть ли FavoriteItem).
@@ -264,9 +267,11 @@ class SharedRentalSegmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
+    @extend_schema_field(serializers.BooleanField())
     def get_is_free(self, obj):
         return obj.participant_id is None
 
+    @extend_schema_field(serializers.IntegerField())
     def get_days_count(self, obj):
         return (obj.segment_end - obj.segment_start).days
 
@@ -302,6 +307,7 @@ class SharedRentalSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
 
+    @extend_schema_field(serializers.IntegerField())
     def get_days_per_slot(self, obj):
         total_days = (obj.planned_end - obj.planned_start).days
         return total_days // obj.slots_needed if obj.slots_needed else 0
@@ -377,7 +383,7 @@ class SharedRentalSerializer(serializers.ModelSerializer):
             )
 
         return shared_rental
-    
+    @extend_schema_field(serializers.CharField())
     def get_viewer_role(self, obj):
         """
         Роль текущего пользователя относительно этой заявки:
