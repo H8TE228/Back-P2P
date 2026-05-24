@@ -121,8 +121,8 @@ class ItemViewSet(viewsets.ModelViewSet):
                 Q(name__icontains=search) | Q(description__icontains=search)
             )
             
-        if self.action == 'retrieve':
-            return queryset.select_related('owner').all()
+        if self.action in ['retrieve', 'list']:
+            return queryset.select_related('owner')
         
         return queryset
 
